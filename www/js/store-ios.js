@@ -19,6 +19,15 @@
     try { localStorage.removeItem('openzoo.' + k); } catch (_) {}
   }
 
+  function noArgMethods() {
+    return {
+      restore: true,
+      entitlements: true,
+      debugBuild: true,
+      debugUnlockStatus: true
+    };
+  }
+
   function call(method, arg) {
     return new Promise(function (resolve, reject) {
       if (!pluginReady()) {
@@ -26,8 +35,12 @@
         return;
       }
       var fn = root.OpenZooStore[method];
-      if (method === 'restore' || method === 'entitlements') {
-        fn(function (value) { resolve(value || []); }, function (err) { reject(new Error(err || 'StoreKit failed')); });
+      if (typeof fn !== 'function') {
+        reject(new Error('StoreKit failed'));
+        return;
+      }
+      if (noArgMethods()[method]) {
+        fn(function (value) { resolve(value); }, function (err) { reject(new Error(err || 'StoreKit failed')); });
         return;
       }
       fn(arg, function (value) { resolve(value); }, function (err) { reject(new Error(err || 'StoreKit failed')); });
@@ -82,9 +95,18 @@
     }
   }
 
-  function hasAccess(sub) {
+  function hasAccess(sub, opts) {
     if (!sub) return false;
-    return !!(sub.productId || sub.jws || sub.key);
+    if (sub.productId || sub.jws || sub.key) return true;
+    return !!(opts && opts.debug && sub.localUnlock);
+  }
+
+  function applyLocalUnlock(sub) {
+    var next = sub && typeof sub === 'object' ? Object.assign({}, sub) : {};
+    next.localUnlock = true;
+    next.tier = next.tier || 'dev';
+    next.updatedAt = Date.now();
+    return next;
   }
 
   var api = {
@@ -93,12 +115,16 @@
     purchase: function (productId) { return call('purchase', productId); },
     restore: function () { return call('restore'); },
     entitlements: function () { return call('entitlements'); },
+    debugBuild: function () { return call('debugBuild'); },
+    debugUnlock: function (email) { return call('debugUnlock', email); },
+    debugUnlockStatus: function () { return call('debugUnlockStatus'); },
     loadSubscription: loadSubscription,
     saveSubscription: saveSubscription,
     clearSubscription: clearSubscription,
     loadSecret: loadSecret,
     storeSecret: storeSecret,
-    hasAccess: hasAccess
+    hasAccess: hasAccess,
+    applyLocalUnlock: applyLocalUnlock
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
