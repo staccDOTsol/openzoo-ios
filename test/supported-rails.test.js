@@ -12,6 +12,9 @@ eval(fs.readFileSync(path.join(__dirname, '../www/js/openzoo-crypto.js'), 'utf8'
 const rails = require('../www/js/rails.js');
 const wrap = require('../www/js/wrap.js');
 const wallet = require('../www/js/wallet-ios.js');
+const errors = require('../www/js/user-errors.js');
+const pay402 = require('../www/js/pay402.js');
+const clipboard = require('../www/js/clipboard.js');
 
 const FXY = 'FXYkwMtfKpA174rp8ixVeiGs5TYGaBsYRrHE3KrR449B';
 const BO7X = 'Bo7xBF7SY8EyUBPUxRP66SFafxoPf2n5uqiLjbxEebx9';
@@ -68,13 +71,98 @@ const fundable = wrap.pickLargestUseful(holdings, [source, rails.wrapSource(pars
 });
 assert.ok(fundable.length >= 1);
 assert.strictEqual(fundable[0].symbol, 'TOKEN', 'largest useful holding is TOKEN');
+const tenToken = wrap.pickLargestUseful(
+  wrap.holdingsMap([{ mint: TOKEN, amount: '10000000', decimals: 6 }]),
+  [source],
+  { [FXY]: 1000000000n }
+);
+assert.strictEqual(tenToken.length, 1, '$10 TOKEN still wraps a tiny twin 402');
+assert.strictEqual(wrap.pickLargestUseful(wrap.holdingsMap([]), [source], { [FXY]: 1n }).length, 0);
 
 assert.strictEqual(wrap.depositForShares(1000n, 0n, 0n), 2000n);
 
 const phantomProv = wallet.PROVIDERS.phantom;
-assert.strictEqual(wallet.methodUrl(phantomProv, 'signTransaction', true), 'phantom://ul/v1/signTransaction');
-assert.strictEqual(wallet.methodUrl(phantomProv, 'connect', true), 'phantom://ul/v1/connect');
-assert.strictEqual(wallet.methodUrl(phantomProv, 'signTransaction', false), 'https://phantom.app/ul/v1/signTransaction');
+const solflareProv = wallet.PROVIDERS.solflare;
+assert.strictEqual(phantomProv.appBase, 'phantom://v1/');
+assert.strictEqual(phantomProv.redirect, 'openzoo://phantom');
+assert.strictEqual(wallet.methodUrl(phantomProv, 'signTransaction', true), 'phantom://v1/signTransaction');
+assert.strictEqual(wallet.methodUrl(phantomProv, 'connect', true), 'phantom://v1/connect');
+assert.strictEqual(wallet.methodUrl(phantomProv, 'signAndSendTransaction', true), 'phantom://v1/signAndSendTransaction');
+assert.strictEqual(wallet.methodUrl(phantomProv, 'signMessage', true), 'phantom://v1/signMessage');
+assert.strictEqual(wallet.methodUrl(phantomProv, 'connect', false), 'phantom://v1/connect');
+assert.strictEqual(wallet.methodUrl(phantomProv, 'connect', null), 'phantom://v1/connect');
+assert.strictEqual(wallet.methodUrl(solflareProv, 'connect', true), 'solflare://ul/v1/connect');
+assert.strictEqual(wallet.methodUrl(solflareProv, 'connect', false), 'https://solflare.com/ul/v1/connect');
+assert.strictEqual(solflareProv.redirect, 'openzoo://solflare');
+
+const phantomInstalled = wallet.openUrlPlan(phantomProv, 'connect', true);
+assert.strictEqual(phantomInstalled.primary, 'phantom://v1/connect');
+assert.strictEqual(phantomInstalled.fallback, 'https://phantom.app/ul/v1/connect');
+assert.strictEqual(phantomInstalled.forceNative, true);
+const phantomUnknown = wallet.openUrlPlan(phantomProv, 'connect', null);
+assert.strictEqual(phantomUnknown.primary, 'phantom://v1/connect');
+assert.strictEqual(phantomUnknown.forceNative, true);
+const phantomMissing = wallet.openUrlPlan(phantomProv, 'connect', false);
+assert.strictEqual(phantomMissing.primary, 'phantom://v1/connect');
+assert.strictEqual(phantomMissing.fallback, 'https://phantom.app/ul/v1/connect');
+const solflareInstalled = wallet.openUrlPlan(solflareProv, 'connect', true);
+assert.strictEqual(solflareInstalled.primary, 'solflare://ul/v1/connect');
+assert.strictEqual(solflareInstalled.forceNative, false);
+const solflareMissing = wallet.openUrlPlan(solflareProv, 'connect', false);
+assert.strictEqual(solflareMissing.primary, 'https://solflare.com/ul/v1/connect');
+assert.strictEqual(solflareMissing.fallback, null);
+
+assert.strictEqual(errors.sanitize(new Error('TypeError: Load failed')), 'The zoo could not reach the network. Try again.');
+assert.strictEqual(errors.sanitize('Load failed'), 'The zoo could not reach the network. Try again.');
+assert.strictEqual(errors.sanitize('Failed to fetch'), 'The zoo could not reach the network. Try again.');
+assert.ok(!/load failed/i.test(errors.sanitize('TypeError: Load failed')));
+assert.strictEqual(errors.sanitize('4001: User rejected the request'), '4001: User rejected the request');
+assert.ok(errors.isLoadFailed(new TypeError('Load failed')));
+assert.ok(errors.isRetryable(new TypeError('Load failed')));
+assert.ok(errors.isRetryable(new Error('The zoo could not reach the network. Try again.')));
+assert.ok(!errors.isRetryable(new Error('4001: User rejected the request')));
+
+const mem = {
+  data: {},
+  setItem: function (k, v) { this.data[k] = String(v); },
+  getItem: function (k) { return Object.prototype.hasOwnProperty.call(this.data, k) ? this.data[k] : null; },
+  removeItem: function (k) { delete this.data[k]; }
+};
+const pending402 = { threadId: 't-1', userText: 'hi', accepts: [{ asset: FXY }], at: 1_000 };
+assert.strictEqual(pay402.persist(pending402, mem), true);
+assert.deepStrictEqual(pay402.load(mem), pending402);
+assert.strictEqual(pay402.shouldRetryAfterResume(pending402, { now: 2_000, walletAddress: 'A', requireWallet: true }), true);
+assert.strictEqual(pay402.shouldRetryAfterResume(pending402, { now: 2_000, hasPendingSign: true }), false);
+assert.strictEqual(pay402.shouldRetryAfterResume(pending402, { now: 2_000, settleInFlight: true }), false);
+assert.strictEqual(pay402.shouldRetryAfterResume(pending402, { now: pending402.at + pay402.MAX_AGE_MS + 1 }), false);
+assert.strictEqual(pay402.shouldRetryAfterResume(pending402, { now: 2_000, requireWallet: true }), false);
+assert.strictEqual(pay402.shouldRetryAfterResume(Object.assign({}, pending402, { terminal: true }), { now: 2_000 }), false);
+pay402.clear(mem);
+assert.strictEqual(pay402.load(mem), null);
+
+let copied = '';
+assert.strictEqual(clipboard.execCommandCopy('abc', {
+  body: {
+    appendChild: function () {},
+    removeChild: function () {}
+  },
+  createElement: function () {
+    return {
+      value: '',
+      style: {},
+      setAttribute: function () {},
+      focus: function () {},
+      select: function () {},
+      setSelectionRange: function () {},
+      parentNode: { removeChild: function () {} }
+    };
+  },
+  execCommand: function (cmd) {
+    copied = cmd;
+    return true;
+  }
+}), true);
+assert.strictEqual(copied, 'copy');
 
 const params = new URLSearchParams('errorCode=4001&errorMessage=User+rejected+the+request');
 assert.strictEqual(wallet.walletError(params), '4001: User rejected the request');
@@ -88,8 +176,22 @@ const opened = global.nacl.box.open.after(enc.bytes, enc.nonce, phantomShared);
 assert.ok(opened, 'Phantom nacl.box.after shared-secret decrypt works');
 assert.strictEqual(JSON.parse(new TextDecoder().decode(opened)).session, 'sess');
 
-console.log('supported-rails: ok');
-console.log('  FXY symbol', parsed.rails[FXY].symbol);
-console.log('  wrap source', source.underlyingSymbol, source.underlying);
-console.log('  drained rejected', BO7X);
-console.log('  phantom installed url', wallet.methodUrl(phantomProv, 'signTransaction', true));
+clipboard.copyText('addr-1', {
+  plugin: function (text, ok) { assert.strictEqual(text, 'addr-1'); ok(); }
+}).then(function (via) {
+  assert.strictEqual(via, 'plugin');
+  return clipboard.copyText('addr-2', {
+    clipboard: { writeText: function (text) { assert.strictEqual(text, 'addr-2'); return Promise.resolve(); } }
+  });
+}).then(function (via) {
+  assert.strictEqual(via, 'clipboard-api');
+  console.log('supported-rails: ok');
+  console.log('  FXY symbol', parsed.rails[FXY].symbol);
+  console.log('  wrap source', source.underlyingSymbol, source.underlying);
+  console.log('  drained rejected', BO7X);
+  console.log('  phantom installed url', wallet.methodUrl(phantomProv, 'signTransaction', true));
+  console.log('  phantom plan', wallet.openUrlPlan(phantomProv, 'connect', true).primary);
+}).catch(function (err) {
+  console.error(err);
+  process.exit(1);
+});

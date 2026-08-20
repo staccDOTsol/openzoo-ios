@@ -217,6 +217,11 @@
     }).then(function (body) {
       if (body.error) throw new Error(body.error.message || 'RPC error');
       return body.result;
+    }).catch(function (err) {
+      if (root.OpenZooUserErrors && typeof root.OpenZooUserErrors.sanitize === 'function') {
+        throw new Error(root.OpenZooUserErrors.sanitize(err));
+      }
+      throw err;
     });
   }
 

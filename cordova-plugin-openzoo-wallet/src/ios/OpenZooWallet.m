@@ -95,4 +95,49 @@ static NSString * const kOpenZooKeychainService = @"fun.openzoo.ios";
     });
 }
 
+- (void)copyToClipboard:(CDVInvokedUrlCommand*)command {
+    NSString *text = [command argumentAtIndex:0];
+    if (text == nil) {
+        [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"missing text"] callbackId:command.callbackId];
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [UIPasteboard generalPasteboard].string = text;
+        [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK] callbackId:command.callbackId];
+    });
+}
+
+- (BOOL)isPhantomHandoffURL:(NSURL*)url {
+    if (url == nil) {
+        return NO;
+    }
+    NSString *scheme = url.scheme.lowercaseString;
+    if ([scheme isEqualToString:@"phantom"]) {
+        return YES;
+    }
+    if (![scheme isEqualToString:@"https"] && ![scheme isEqualToString:@"http"]) {
+        return NO;
+    }
+    NSString *host = url.host.lowercaseString ?: @"";
+    return [host isEqualToString:@"phantom.app"] || [host hasSuffix:@".phantom.app"];
+}
+
+- (void)handoffURL:(NSURL*)url {
+    if (url == nil) {
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+    });
+}
+
+- (BOOL)shouldOverrideLoadWithRequest:(NSURLRequest*)request navigationType:(NSInteger)navigationType {
+    NSURL *url = request.URL;
+    if ([self isPhantomHandoffURL:url]) {
+        [self handoffURL:url];
+        return NO;
+    }
+    return YES;
+}
+
 @end

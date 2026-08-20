@@ -22,7 +22,7 @@ Live web copy (do not invent prices): Basic $9/mo, Pro $29/mo (Most teams want t
 
 ## Wallet (optional, not first-run)
 
-`cordova-plugin-mwa` is unused Android code. The shell never calls `MWA.*`. Phantom still prefers `phantom://ul/v1/…` when installed.
+`cordova-plugin-mwa` is unused Android code. The shell never calls `MWA.*`. Phantom custom scheme is `phantom://v1/…` (no `ul/`); https is last resort via UIApplication. WKWebView never shows raw “Load failed”. Wallet addresses are tap-to-copy. 402s persist across the wallet background. A labeled **New chat** button sits on the main header.
 
 ## Mac build (Xcode required)
 

@@ -14,7 +14,6 @@
     <access origin="https://x402.accrue.fund" />
     <access origin="https://api.mainnet-beta.solana.com" />
     <access origin="https://solana-rpc.publicnode.com" />
-    <access origin="https://phantom.app" />
     <access origin="https://solflare.com" />
 
     <allow-intent href="https://*/*" />
@@ -86,6 +85,53 @@
                 <string>phantom</string>
                 <string>solflare</string>
             </array>
+        </config-file>
+        <config-file parent="NSAppTransportSecurity" target="*-Info.plist">
+            <dict>
+                <key>NSAllowsLocalNetworking</key>
+                <true/>
+                <key>NSAllowsArbitraryLoadsInWebContent</key>
+                <true/>
+                <key>NSExceptionDomains</key>
+                <dict>
+                    <key>x402-tokens.fly.dev</key>
+                    <dict>
+                        <key>NSIncludesSubdomains</key>
+                        <true/>
+                        <key>NSExceptionRequiresForwardSecrecy</key>
+                        <true/>
+                        <key>NSExceptionMinimumTLSVersion</key>
+                        <string>TLSv1.2</string>
+                    </dict>
+                    <key>accrue.fund</key>
+                    <dict>
+                        <key>NSIncludesSubdomains</key>
+                        <true/>
+                        <key>NSExceptionRequiresForwardSecrecy</key>
+                        <true/>
+                        <key>NSExceptionMinimumTLSVersion</key>
+                        <string>TLSv1.2</string>
+                    </dict>
+                    <key>solana.com</key>
+                    <dict>
+                        <key>NSIncludesSubdomains</key>
+                        <true/>
+                        <key>NSExceptionRequiresForwardSecrecy</key>
+                        <true/>
+                        <key>NSExceptionMinimumTLSVersion</key>
+                        <string>TLSv1.2</string>
+                    </dict>
+                    <key>publicnode.com</key>
+                    <dict>
+                        <key>NSIncludesSubdomains</key>
+                        <true/>
+                        <key>NSExceptionRequiresForwardSecrecy</key>
+                        <true/>
+                        <key>NSExceptionMinimumTLSVersion</key>
+                        <string>TLSv1.2</string>
+                    </dict>
+                </dict>
+            </dict>
         </config-file>
     </platform>
 </widget>

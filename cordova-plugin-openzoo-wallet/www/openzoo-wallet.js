@@ -33,10 +33,17 @@ var OpenZooWallet = {
     },
 
     /**
-     * Open a URL with UIApplication (Phantom/Solflare universal links).
+     * Open a URL with UIApplication (Phantom/Solflare). Never load Phantom https in the WKWebView.
      */
     openURL: function(url, success, error) {
         cordovaExec(success, error, 'OpenZooWallet', 'openURL', [url]);
+    },
+
+    /**
+     * Copy a string to the iOS pasteboard. Success is called with no args.
+     */
+    copyToClipboard: function(text, success, error) {
+        cordovaExec(success, error, 'OpenZooWallet', 'copyToClipboard', [text]);
     }
 };
 
