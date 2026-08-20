@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src https://x402-tokens.fly.dev https://x402.accrue.fund https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline';">
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src https://zoo.openzoo.fun https://x402-tokens.fly.dev https://x402.accrue.fund https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline';">
   <title>OpenZoo</title>
   <link rel="stylesheet" href="app.css">
 </head>
@@ -39,8 +39,8 @@
       </div>
       <div id="headerDials">
         <select class="dial" id="model" aria-label="Model"></select>
-        <button class="dial" id="wallet-btn" type="button">wallet</button>
-        <button class="icon-btn" id="exit-btn" title="Back to shell">✕</button>
+        <button class="dial" id="plan-btn" type="button">plan</button>
+        <button class="icon-btn" id="exit-btn" title="Plans">✕</button>
       </div>
     </header>
 
@@ -73,9 +73,17 @@
 
   <div id="walletOverlay">
     <div id="walletBox">
-      <h3>Your wallet</h3>
-      <p class="wsub" id="wallet-sub">This is the wallet the chat pays from. Connect it in the shell. Payments are signed here; a top-up may be sent first if this wallet needs it.</p>
+      <h3>Your plan</h3>
+      <p class="wsub" id="wallet-sub">Subscription keys · no x402</p>
       <div id="wallet-body"></div>
+      <button class="dial" id="restore-btn" type="button">Restore purchases</button>
+      <button class="dial" id="change-plan-btn" type="button">Change plan</button>
+      <details id="advanced-crypto">
+        <summary>Advanced · wallet (optional)</summary>
+        <p class="wsub">Not required to chat. Crypto wrap stays here, not on first-run.</p>
+        <div id="wallet-crypto"></div>
+        <button class="dial" id="wallet-connect-btn" type="button">Open wallet settings</button>
+      </details>
       <button class="dial" id="wallet-close" type="button">Close</button>
     </div>
   </div>
@@ -92,6 +100,7 @@
   <script src="../vendor/nacl-fast.min.js"></script>
   <script src="../vendor/bs58.js"></script>
   <script src="../js/openzoo-crypto.js"></script>
+  <script src="../js/billing.js"></script>
   <script src="../js/rails.js"></script>
   <script src="../js/solana.js"></script>
   <script src="../js/wrap.js"></script>

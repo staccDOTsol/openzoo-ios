@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
+        id="cordova-plugin-openzoo-store"
+        version="1.0.0">
+    <name>OpenZoo Store</name>
+    <description>StoreKit 2 auto-renewable subscriptions for OpenZoo iOS</description>
+
+    <js-module src="www/openzoo-store.js" name="OpenZooStore">
+        <clobbers target="OpenZooStore" />
+    </js-module>
+
+    <platform name="ios">
+        <config-file target="config.xml" parent="/*">
+            <feature name="OpenZooStore">
+                <param name="ios-package" value="OpenZooStore" />
+            </feature>
+        </config-file>
+        <header-file src="src/ios/OpenZooStore-Bridging-Header.h" />
+        <source-file src="src/ios/OpenZooStore.swift" />
+        <framework src="StoreKit.framework" />
+    </platform>
+</plugin>

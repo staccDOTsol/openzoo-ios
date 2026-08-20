@@ -1,0 +1,10 @@
+{
+  "name": "cordova-plugin-openzoo-store",
+  "version": "1.0.0",
+  "description": "StoreKit 2 subscriptions for OpenZoo iOS. No Stripe webview.",
+  "cordova": {
+    "id": "cordova-plugin-openzoo-store",
+    "platforms": ["ios"]
+  },
+  "license": "MIT"
+}
