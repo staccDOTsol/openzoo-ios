@@ -14,14 +14,12 @@
   <div id="scrim" class="hidden"></div>
   <aside id="sidebar">
     <div id="sideTop">
-      <button class="icon-btn" id="new-thread" title="New chat" aria-label="New chat">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      </button>
       <input id="search" placeholder="Search" autocomplete="off">
       <button class="icon-btn" id="close-sidebar" title="Close" aria-label="Close sidebar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
+    <button class="new-chat-row" id="new-thread" type="button">New chat</button>
     <div id="threads"></div>
   </aside>
 
@@ -30,6 +28,7 @@
       <button class="icon-btn" id="menu-btn" aria-label="Chats">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
       </button>
+      <button class="new-chat-btn" id="header-new-chat" type="button">New chat</button>
       <div id="chatHeaderId">
         <div class="tavatar" id="header-avatar">OZ</div>
         <div class="hname">
@@ -38,7 +37,6 @@
         </div>
       </div>
       <div id="headerDials">
-        <button class="dial" id="header-new-chat" type="button">New chat</button>
         <select class="dial" id="model" aria-label="Model"></select>
         <button class="dial" id="plan-btn" type="button">plan</button>
         <button class="icon-btn" id="exit-btn" title="Plans">✕</button>
