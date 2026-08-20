@@ -13,6 +13,7 @@ var TEXT_EXTS = {
 var AVATAR_COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#ff453a', '#bf5af2', '#64d2ff'];
 
 var wallet = { address: null, method: null };
+var subscription = { tier: null, key: null, productId: null, pending: false };
 var pendingSign = {};
 var signSeq = 1;
 var threads = [];
@@ -104,7 +105,7 @@ function api(path, options) {
   options = options || {};
   var headers = Object.assign({
     'Content-Type': 'application/json',
-    'Authorization': 'openzoo-ios'
+    'Authorization': subscription.key ? ('Bearer ' + subscription.key) : 'openzoo-ios'
   }, options.headers || {});
   return fetch(GATEWAY + path, {
     method: options.method || 'GET',
@@ -341,9 +342,11 @@ function consumeAttachments(thread) {
 function renderHeader() {
   var t = activeThread();
   document.getElementById('header-name').textContent = t.name;
-  document.getElementById('header-sub').textContent = t.usingLabel || (wallet.address
-    ? (wallet.address.slice(0, 4) + '…' + wallet.address.slice(-4))
-    : 'openzoo');
+  document.getElementById('header-sub').textContent = t.usingLabel || (subscription.tier
+    ? (subscription.tier + (subscription.pending ? ' · finishing setup' : ''))
+    : (wallet.address
+      ? (wallet.address.slice(0, 4) + '…' + wallet.address.slice(-4))
+      : 'openzoo'));
   var av = document.getElementById('header-avatar');
   av.textContent = initials(t.name);
   av.style.background = avatarColor(t.id);
@@ -610,14 +613,16 @@ function sendChat(userText, payment) {
     body: body
   }).then(function (out) {
     if (out.res.status === 402) {
-      thinking.text.textContent = 'Working on it…';
-      return settle402((out.data && out.data.accepts) || []).then(function (xPayment) {
-        thinking.row.remove();
-        return sendChat(userText, xPayment);
-      }).catch(function (err) {
+      if (subscription.key || subscription.pending) {
         thinking.row.classList.add('err');
-        thinking.text.textContent = userFacingPayError(err);
-      });
+        thinking.text.textContent = subscription.pending
+          ? 'Your App Store purchase is saved. The zoo still needs to mint the subscription key.'
+          : 'This chat is on a subscription key. The zoo asked for a per-call payment anyway — we did not open a wallet.';
+        return;
+      }
+      thinking.row.classList.add('err');
+      thinking.text.textContent = 'A subscription is required. Open Plan to subscribe on the App Store.';
+      return;
     }
     if (isContextMissing(out.data, out.res.status)) {
       thread.contextId = null;
@@ -666,15 +671,18 @@ function submit() {
   });
 }
 
-function showWallet() {
+function showPlan() {
   document.getElementById('walletOverlay').classList.add('show');
   var body = document.getElementById('wallet-body');
-  if (!wallet.address) {
-    body.innerHTML = '<p class="wsub">No wallet connected. Close this and use the shell.</p>';
-    return;
-  }
-  body.innerHTML = '<div class="waddr"></div>';
-  body.querySelector('.waddr').textContent = wallet.address + ' · ' + wallet.method;
+  var label = subscription.tier ? subscription.tier : 'none yet';
+  var extra = subscription.pending ? 'Purchase saved. Waiting on POST /api/billing/appstore to mint the same key Stripe checkout would.' : '';
+  body.innerHTML = '<div class="waddr"></div><p class="wsub" id="plan-extra"></p>';
+  body.querySelector('.waddr').textContent = 'Plan: ' + label + (subscription.productId ? ' · ' + subscription.productId : '');
+  body.querySelector('#plan-extra').textContent = extra;
+  var crypto = document.getElementById('wallet-crypto');
+  crypto.textContent = wallet.address
+    ? (wallet.address + ' · ' + wallet.method)
+    : 'No wallet connected.';
 }
 
 document.getElementById('menu-btn').onclick = openSidebar;
@@ -734,18 +742,38 @@ $model.addEventListener('change', function () {
   activeThread().model = $model.value;
   saveThreads();
 });
-document.getElementById('wallet-btn').onclick = showWallet;
+document.getElementById('plan-btn').onclick = showPlan;
 document.getElementById('wallet-close').onclick = function () {
   document.getElementById('walletOverlay').classList.remove('show');
 };
+document.getElementById('restore-btn').onclick = function () {
+  window.parent.postMessage({ type: 'restore-purchases' }, '*');
+};
+document.getElementById('change-plan-btn').onclick = function () {
+  window.parent.postMessage({ type: 'show-paywall' }, '*');
+};
+document.getElementById('wallet-connect-btn').onclick = function () {
+  window.parent.postMessage({ type: 'show-advanced-wallet' }, '*');
+};
 document.getElementById('exit-btn').onclick = function () {
-  window.parent.postMessage({ type: 'wallet-disconnect' }, '*');
+  window.parent.postMessage({ type: 'show-paywall' }, '*');
 };
 
 window.addEventListener('message', function (event) {
   if (event.source !== window.parent) return;
   var data = event.data;
   if (!data || !data.type) return;
+  if (data.type === 'subscription') {
+    subscription.tier = data.tier || null;
+    subscription.key = data.key || null;
+    subscription.productId = data.productId || null;
+    subscription.pending = !!data.pending;
+    if (data.address) {
+      wallet.address = data.address;
+      wallet.method = data.method;
+    }
+    renderHeader();
+  }
   if (data.type === 'wallet-connected') {
     wallet.address = data.address;
     wallet.method = data.method;
@@ -764,7 +792,7 @@ window.addEventListener('message', function (event) {
   }
 });
 
-window.parent.postMessage({ type: 'wallet-request-info' }, '*');
+window.parent.postMessage({ type: 'subscription-request' }, '*');
 loadThreads();
 renderSidebar();
 renderLog();

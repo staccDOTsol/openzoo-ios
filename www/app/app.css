@@ -142,6 +142,8 @@ body {
   border-radius: 16px 16px 0 0; padding: 20px 18px 28px;
 }
 #walletBox h3 { margin-bottom: 4px; font-size: 15px; }
+#advanced-crypto { margin: 12px 0; color: #8e8e93; font-size: 12px; }
+#advanced-crypto summary { cursor: pointer; margin-bottom: 8px; }
 .wsub { color: #8e8e93; font-size: 12px; margin-bottom: 14px; line-height: 1.5; }
 .waddr {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
