@@ -75,7 +75,6 @@
         ? asBig(needByMint[src.mint])
         : 1n;
       if (held <= 0n) return;
-      if (held < need) return;
       fundable.push({
         source: src,
         held: held,

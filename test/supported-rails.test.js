@@ -71,6 +71,13 @@ const fundable = wrap.pickLargestUseful(holdings, [source, rails.wrapSource(pars
 });
 assert.ok(fundable.length >= 1);
 assert.strictEqual(fundable[0].symbol, 'TOKEN', 'largest useful holding is TOKEN');
+const tenToken = wrap.pickLargestUseful(
+  wrap.holdingsMap([{ mint: TOKEN, amount: '10000000', decimals: 6 }]),
+  [source],
+  { [FXY]: 1000000000n }
+);
+assert.strictEqual(tenToken.length, 1, '$10 TOKEN still wraps a tiny twin 402');
+assert.strictEqual(wrap.pickLargestUseful(wrap.holdingsMap([]), [source], { [FXY]: 1n }).length, 0);
 
 assert.strictEqual(wrap.depositForShares(1000n, 0n, 0n), 2000n);
 

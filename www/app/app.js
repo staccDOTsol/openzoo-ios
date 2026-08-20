@@ -119,6 +119,8 @@ function api(path, options) {
       }
       return { res: res, data: data, text: text };
     });
+  }).catch(function (err) {
+    throw new Error(OpenZooUserErrors.sanitize(err));
   });
 }
 
@@ -201,12 +203,71 @@ function encodePayment(envelope, signedTxB64) {
   return btoa(unescape(encodeURIComponent(JSON.stringify(payment))));
 }
 
+var settleInFlight = false;
+var toastTimer = null;
+
 function userFacingPayError(err) {
-  var msg = (err && err.message) ? err.message : String(err || 'Something went wrong');
-  if (/underfund|insufficient|0x1|custom program error/i.test(msg)) {
-    return 'This wallet needs a top-up before that message can send.';
+  return OpenZooUserErrors.sanitize(err);
+}
+
+function showCopiedToast(label) {
+  var el = document.getElementById('copiedToast');
+  if (!el) return;
+  el.textContent = label || 'copied';
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { el.classList.remove('show'); }, 1400);
+}
+
+function copyValue(text) {
+  return OpenZooClipboard.copyText(text).then(function () {
+    showCopiedToast('copied');
+  });
+}
+
+function isEditableTarget(el) {
+  if (!el) return false;
+  var tag = (el.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+  return !!el.isContentEditable;
+}
+
+function bindSelectionCopy() {
+  var last = '';
+  function fromSelection() {
+    var sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return;
+    var node = sel.anchorNode;
+    var el = node && (node.nodeType === 1 ? node : node.parentElement);
+    if (isEditableTarget(el) || isEditableTarget(document.activeElement)) return;
+    var text = String(sel.toString() || '').trim();
+    if (!text || text === last) return;
+    last = text;
+    copyValue(text);
   }
-  return msg;
+  document.addEventListener('mouseup', fromSelection);
+  document.addEventListener('touchend', fromSelection);
+}
+
+function promptCopyAddress(title, lead) {
+  return new Promise(function (resolve) {
+    openModal(title, lead);
+    $modalBody.innerHTML = '';
+    var addr = document.createElement('div');
+    addr.className = 'waddr copyable';
+    addr.textContent = wallet.address || '';
+    addr.onclick = function () { copyValue(wallet.address); };
+    $modalBody.appendChild(addr);
+    var hint = document.createElement('p');
+    hint.className = 'wsub';
+    hint.textContent = 'Tap the address to copy it.';
+    $modalBody.appendChild(hint);
+    $modalActions.innerHTML = '<button type="button" class="ghost" id="modal-ok">OK</button>';
+    document.getElementById('modal-ok').onclick = function () {
+      closeModal();
+      resolve();
+    };
+  });
 }
 
 function splitCorpus(text) {
@@ -470,6 +531,14 @@ function chatHeaders(thread, payment) {
 
 function payForAccept(row) {
   if (!wallet.address) throw new Error('Connect a wallet in the shell first.');
+  var prev = OpenZooPay402.load() || {};
+  OpenZooPay402.persist({
+    threadId: prev.threadId,
+    userText: prev.userText,
+    accepts: prev.accepts && prev.accepts.length ? prev.accepts : [row],
+    lastAccept: row,
+    at: prev.at || Date.now()
+  });
   return api('/v1/pay/build', {
     method: 'POST',
     body: { accept: row, payer: wallet.address }
@@ -494,10 +563,20 @@ function topUpAndRetry(row, plan) {
   ]).then(function (parts) {
     var deposit = OpenZooWrap.depositForShares(need, parts[0], parts[1]);
     if (plan.underHeld < deposit) {
-      throw new Error('This wallet needs a top-up from ' + plan.source.underlyingSymbol + ' before that message can send.');
+      return promptCopyAddress(
+        'You have ' + plan.source.underlyingSymbol + ', but need a bit more',
+        'Send more ' + plan.source.underlyingSymbol + ' to this address, then try again.'
+      ).then(function () {
+        throw new Error('This wallet needs a top-up from ' + plan.source.underlyingSymbol + ' before that message can send.');
+      });
     }
     if (parts[3] < 5000) {
-      throw new Error('This wallet needs a little SOL for the network fee.');
+      return promptCopyAddress(
+        'This wallet needs a little SOL for the network fee',
+        'Copy this address, send a little SOL, then try again.'
+      ).then(function () {
+        throw new Error('This wallet needs a little SOL for the network fee');
+      });
     }
     var wrappedProgram = OpenZooWrap.mintOwnerProgram(parts[2]);
     return OpenZooWrap.buildUnsignedWrapTx({
@@ -516,6 +595,7 @@ function topUpAndRetry(row, plan) {
 }
 
 function settle402(accepts) {
+  settleInFlight = true;
   return ensureDirectory().then(function (parsed) {
     var live = OpenZooRails.liveAccepts(accepts, parsed);
     var deprecated = OpenZooRails.deprecatedAccepts(accepts);
@@ -545,28 +625,62 @@ function settle402(accepts) {
       }
       return runTopup(parsed, live, accounts, wrappable);
     });
+  }).then(function (payment) {
+    settleInFlight = false;
+    return payment;
+  }, function (err) {
+    settleInFlight = false;
+    throw err;
+  });
+}
+
+function promptNeedFunds(parsed, live) {
+  return OpenZooSolana.getBalanceLamports(wallet.address).then(function (lamports) {
+    if (lamports < 5000) {
+      return promptCopyAddress(
+        'This wallet needs a little SOL for the network fee',
+        'Copy this address, send a little SOL, then try again.'
+      ).then(function () {
+        throw new Error('This wallet needs a little SOL for the network fee');
+      });
+    }
+    var seen = {};
+    var names = [];
+    (live || []).forEach(function (row) {
+      var src = OpenZooRails.wrapSource(parsed, OpenZooRails.acceptAsset(row));
+      var sym = src && src.underlyingSymbol;
+      if (!sym || seen[sym]) return;
+      seen[sym] = true;
+      names.push(sym);
+    });
+    if (!names.length) names = ['TOKEN', 'USDC', 'LEOS'];
+    return promptCopyAddress(
+      'Send ' + names.join(', ') + ' to keep chatting',
+      'This wallet does not have those yet. Tap the address to copy it, send one, then try again.'
+    ).then(function () {
+      throw new Error('This wallet needs a top-up before that message can send.');
+    });
   });
 }
 
 function runTopup(parsed, live, accounts, wrappable) {
   var ez = OpenZooWrap.chooseEzTopup(parsed, live, accounts);
   if (!ez.length) {
-    throw new Error('This wallet needs a top-up before that message can send.');
+    return promptNeedFunds(parsed, live);
   }
-  var pick = Promise.resolve(ez[0]);
-  if (ez.length > 1) {
-    pick = askChoice(
-      'Add funds to keep chatting',
-      'Use the largest balance in this wallet, or pick one.',
-      ez.map(function (item) {
-        return {
-          label: item.symbol,
-          action: 'Top up with ' + item.symbol,
-          value: item
-        };
-      })
-    );
-  }
+  var pick = askChoice(
+    'Wrap to send this',
+    ez.length === 1
+      ? ('You have ' + ez[0].symbol + '. Wrap enough to send this?')
+      : 'You have more than one token. Wrap enough of one to send this?',
+    ez.map(function (item) {
+      return {
+        label: item.symbol,
+        action: 'Wrap ' + item.symbol,
+        value: item
+      };
+    })
+  );
   return pick.then(function (choice) {
     if (!choice) throw new Error('Top-up cancelled');
     var match = wrappable.filter(function (w) { return w.plan && w.plan.source && w.plan.source.underlying === choice.source.underlying; })[0]
@@ -613,6 +727,23 @@ function sendChat(userText, payment) {
     body: body
   }).then(function (out) {
     if (out.res.status === 402) {
+      OpenZooPay402.persist({
+        threadId: thread.id,
+        userText: userText,
+        accepts: (out.data && out.data.accepts) || [],
+        at: Date.now()
+      });
+      if (wallet.address) {
+        thinking.text.textContent = 'Working on it…';
+        return settle402((out.data && out.data.accepts) || []).then(function (xPayment) {
+          thinking.row.remove();
+          return sendChat(userText, xPayment);
+        }).catch(function (err) {
+          mark402TerminalUnlessRetryable(err);
+          thinking.row.classList.add('err');
+          thinking.text.textContent = userFacingPayError(err);
+        });
+      }
       if (subscription.key || subscription.pending) {
         thinking.row.classList.add('err');
         thinking.text.textContent = subscription.pending
@@ -645,9 +776,44 @@ function sendChat(userText, payment) {
     thread.updatedAt = Date.now();
     saveThreads();
     renderSidebar();
+    OpenZooPay402.clear();
   }).catch(function (err) {
+    mark402TerminalUnlessRetryable(err);
     thinking.row.classList.add('err');
     thinking.text.textContent = userFacingPayError(err);
+  });
+}
+
+function mark402TerminalUnlessRetryable(err) {
+  if (OpenZooUserErrors.isRetryable(err)) return;
+  var cur = OpenZooPay402.load();
+  if (!cur) return;
+  OpenZooPay402.persist(Object.assign({}, cur, { terminal: true }));
+}
+
+function retryPending402() {
+  var st = OpenZooPay402.load();
+  if (!OpenZooPay402.shouldRetryAfterResume(st, {
+    hasPendingSign: Object.keys(pendingSign).length > 0,
+    settleInFlight: settleInFlight,
+    threadId: activeThread() && activeThread().id,
+    requireWallet: true,
+    walletAddress: wallet.address
+  })) return;
+  if (busy) return;
+  busy = true;
+  document.getElementById('send').disabled = true;
+  var thinking = addBubble('assistant', 'Working on it…', { pending: true });
+  settle402(st.accepts).then(function (xPayment) {
+    thinking.row.remove();
+    return sendChat(st.userText, xPayment);
+  }).catch(function (err) {
+    mark402TerminalUnlessRetryable(err);
+    thinking.row.classList.add('err');
+    thinking.text.textContent = userFacingPayError(err);
+  }).then(function () {
+    busy = false;
+    document.getElementById('send').disabled = false;
   });
 }
 
@@ -680,15 +846,28 @@ function showPlan() {
   body.querySelector('.waddr').textContent = 'Plan: ' + label + (subscription.productId ? ' · ' + subscription.productId : '');
   body.querySelector('#plan-extra').textContent = extra;
   var crypto = document.getElementById('wallet-crypto');
-  crypto.textContent = wallet.address
-    ? (wallet.address + ' · ' + wallet.method)
-    : 'No wallet connected.';
+  if (wallet.address) {
+    crypto.innerHTML = '';
+    var addr = document.createElement('div');
+    addr.className = 'waddr copyable';
+    addr.textContent = wallet.address;
+    addr.onclick = function () { copyValue(wallet.address); };
+    crypto.appendChild(addr);
+    var hint = document.createElement('p');
+    hint.className = 'wsub';
+    hint.textContent = wallet.method === 'burner'
+      ? 'This is your local burner. Tap the address to copy it.'
+      : 'Tap the address to copy it.';
+    crypto.appendChild(hint);
+  } else {
+    crypto.textContent = 'No wallet connected.';
+  }
 }
 
 document.getElementById('menu-btn').onclick = openSidebar;
 document.getElementById('close-sidebar').onclick = closeSidebar;
 $scrim.onclick = closeSidebar;
-document.getElementById('new-thread').onclick = function () {
+function startNewChat() {
   var t = blankThread();
   threads.unshift(t);
   activeId = t.id;
@@ -697,7 +876,9 @@ document.getElementById('new-thread').onclick = function () {
   renderSidebar();
   renderLog();
   renderHeader();
-};
+}
+document.getElementById('header-new-chat').onclick = startNewChat;
+document.getElementById('new-thread').onclick = startNewChat;
 document.getElementById('search').addEventListener('input', renderSidebar);
 document.getElementById('plus-btn').onclick = function () {
   $plusMenu.classList.toggle('show');
@@ -763,6 +944,10 @@ window.addEventListener('message', function (event) {
   if (event.source !== window.parent) return;
   var data = event.data;
   if (!data || !data.type) return;
+  if (data.type === 'app-resume') {
+    retryPending402();
+    return;
+  }
   if (data.type === 'subscription') {
     subscription.tier = data.tier || null;
     subscription.key = data.key || null;
@@ -778,6 +963,7 @@ window.addEventListener('message', function (event) {
     wallet.address = data.address;
     wallet.method = data.method;
     renderHeader();
+    retryPending402();
   }
   if (data.type === 'wallet-disconnected') {
     wallet.address = null;
@@ -793,9 +979,14 @@ window.addEventListener('message', function (event) {
 });
 
 window.parent.postMessage({ type: 'subscription-request' }, '*');
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'visible') retryPending402();
+});
+bindSelectionCopy();
 loadThreads();
 renderSidebar();
 renderLog();
 renderHeader();
 loadModels();
 ensureDirectory().catch(function () {});
+retryPending402();

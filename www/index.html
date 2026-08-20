@@ -47,11 +47,14 @@
     #advanced.show { display: block; }
     #picker, #connected { display: flex; flex-direction: column; gap: 10px; }
     #connected { display: none; }
-    .addr { font: 12px/1.45 ui-monospace, Menlo, monospace; word-break: break-all; padding: 10px; border: 1px solid #1c1c1e; border-radius: 10px; }
+    .addr { font: 12px/1.45 ui-monospace, Menlo, monospace; word-break: break-all; padding: 10px; border: 1px solid #1c1c1e; border-radius: 10px; -webkit-user-select: text; user-select: text; cursor: pointer; }
+    #copiedToast { position: fixed; z-index: 80; left: 50%; top: 18px; transform: translateX(-50%); padding: 7px 14px; border-radius: 999px; background: #b8f240; color: #0b0b0d; font: 700 12px/1.2 -apple-system, sans-serif; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
+    #copiedToast.show { opacity: 1; }
     .powered { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 12px; font-size: 10px; letter-spacing: 1.4px; color: #4c4d5a; }
   </style>
 </head>
 <body>
+  <div id="copiedToast" role="status">copied</div>
   <div class="logo">🦓</div>
   <div class="title">OPENZOO</div>
   <div class="tagline" id="tagline">Subscription keys · no x402</div>
@@ -83,6 +86,8 @@
   <script src="vendor/nacl-fast.min.js"></script>
   <script src="vendor/bs58.js"></script>
   <script src="js/openzoo-crypto.js"></script>
+  <script src="js/user-errors.js"></script>
+  <script src="js/clipboard.js"></script>
   <script src="js/solana.js"></script>
   <script src="js/wallet-ios.js"></script>
   <script src="js/billing.js"></script>
@@ -104,7 +109,28 @@
   var $disclaimer = document.getElementById('disclaimer');
 
   function log(msg) { console.log('[shell] ' + msg); }
-  function setStatus(msg) { $status.textContent = msg || ''; }
+  var toastTimer = null;
+  function setStatus(msg) {
+    if (!msg) { $status.textContent = ''; return; }
+    $status.textContent = OpenZooUserErrors.sanitize(msg);
+  }
+  function showCopiedToast(label) {
+    var el = document.getElementById('copiedToast');
+    if (!el) return;
+    el.textContent = label || 'copied';
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 1400);
+  }
+  function copyAddress(address, firstRunBurner) {
+    if (!address) return Promise.resolve();
+    return OpenZooClipboard.copyText(address).then(function () {
+      showCopiedToast('copied');
+      if (firstRunBurner || connectedMethod === 'burner') {
+        setStatus('Copied your local burner address.');
+      }
+    });
+  }
 
   function currentSub() {
     return OpenZooIOSStore.loadSubscription();
@@ -269,12 +295,31 @@
     OpenZooIOSWallet.connectDeeplink('solflare').catch(function (err) { setStatus(err.message || String(err)); });
   };
   document.getElementById('btn-burner').onclick = function () {
-    OpenZooIOSWallet.connectBurner().then(function (result) {
-      showConnected(result.address, 'burner', result);
+    OpenZooIOSWallet.loadBurner().then(function (existing) {
+      var firstRun = !existing;
+      return OpenZooIOSWallet.connectBurner().then(function (result) {
+        showConnected(result.address, 'burner', result);
+        if (firstRun) {
+          return copyAddress(result.address, true).then(function () {
+            setStatus('Copied your local burner. This key stays on this phone.');
+          }).catch(function () {
+            setStatus('This is your local burner. Tap the address to copy it.');
+          });
+        }
+      });
     }).catch(function (err) { setStatus(err.message || String(err)); });
   };
   document.getElementById('btn-disconnect').onclick = disconnect;
 
+  $addr.addEventListener('click', function () {
+    copyAddress(connectedAddress, connectedMethod === 'burner');
+  });
+  document.addEventListener('resume', function () {
+    var iframe = document.getElementById('game');
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: 'app-resume' }, GAME_ORIGIN);
+    }
+  }, false);
   window.handleOpenURL = function (url) {
     OpenZooIOSWallet.handleRedirectUrl(url).then(function (result) {
       if (!result) return;
