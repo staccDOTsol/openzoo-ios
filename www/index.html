@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://x402-tokens.fly.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'; media-src 'self';">
+  <title>OpenZoo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #0a0a12; }
+    body {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; min-height: 100vh;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #fff;
+      padding: 40px 20px 72px;
+      -webkit-user-select: none; user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      overflow-y: auto;
+    }
+    .logo {
+      width: 108px; height: 108px; border-radius: 24px;
+      margin-bottom: 16px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 52px;
+      background: rgba(90, 220, 140, 0.08);
+      border: 1px solid rgba(90, 220, 140, 0.28);
+      box-shadow: 0 0 40px rgba(60, 180, 110, 0.18);
+    }
+    .title {
+      font-size: 28px; font-weight: 700; letter-spacing: 8px;
+      color: #d8ffe8;
+    }
+    .sub {
+      margin-top: 8px; font-size: 11px; letter-spacing: 1px;
+      color: rgba(210, 255, 230, 0.45); text-align: center; max-width: 320px;
+      line-height: 1.5;
+    }
+    .divider {
+      width: 60px; height: 1px; margin: 18px 0 20px;
+      background: linear-gradient(90deg, transparent, rgba(90,220,140,0.45), transparent);
+    }
+    #picker, #connected {
+      display: flex; flex-direction: column; gap: 12px;
+      width: 100%; max-width: 320px;
+    }
+    #connected { display: none; }
+    .btn {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: #fff; padding: 14px 18px;
+      font-family: inherit; font-size: 13px;
+      letter-spacing: 1.4px; border-radius: 10px;
+      cursor: pointer; text-align: center;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.35; pointer-events: none; }
+    .btn.primary {
+      border-color: rgba(90,220,140,0.35);
+      background: linear-gradient(180deg, rgba(40,140,80,0.16) 0%, rgba(20,60,40,0.08) 100%);
+    }
+    .btn.danger {
+      border-color: rgba(255,80,80,0.2);
+      color: rgba(255,255,255,0.55); font-size: 12px; padding: 10px;
+    }
+    #status {
+      margin-top: 16px; font-size: 12px;
+      color: rgba(255,255,255,0.4); text-align: center;
+      max-width: 320px; word-break: break-word; min-height: 18px; line-height: 1.45;
+    }
+    .lbl {
+      font-size: 10px; letter-spacing: 3px;
+      color: rgba(90,220,140,0.55); margin-bottom: 4px; text-align: center;
+    }
+    .addr {
+      font-size: 12px; color: #9ef0b8; word-break: break-all;
+      padding: 12px 14px; background: rgba(90,220,140,0.05);
+      border-radius: 8px; border: 1px solid rgba(90,220,140,0.14);
+      line-height: 1.5; text-align: center;
+    }
+    .disclaimer {
+      font-size: 11px; color: rgba(255,255,255,0.42);
+      line-height: 1.45; text-align: center;
+    }
+    .powered {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      text-align: center; padding: 14px;
+      font-size: 10px; letter-spacing: 1.6px;
+      color: rgba(255,255,255,0.28);
+    }
+  </style>
+</head>
+<body>
+  <div class="logo" data-component="logo">🦓</div>
+  <div class="title" data-component="title">OPENZOO</div>
+  <div class="sub">Chat, bind, and stats against x402-tokens.fly.dev. The shell owns the wallet. iOS never calls MWA.</div>
+  <div class="divider"></div>
+
+  <div id="picker" data-component="wallet-picker">
+    <button class="btn primary" id="btn-phantom" data-testid="connect-phantom">CONNECT PHANTOM</button>
+    <button class="btn" id="btn-solflare" data-testid="connect-solflare">CONNECT SOLFLARE</button>
+    <button class="btn" id="btn-burner" data-testid="connect-burner">USE LOCAL BURNER</button>
+    <button class="btn" id="btn-guest" data-testid="open-guest">OPEN WITHOUT WALLET</button>
+  </div>
+
+  <div id="status" data-component="status"></div>
+
+  <div id="connected" data-component="connected-panel">
+    <div class="lbl" id="connected-label">CONNECTED</div>
+    <div class="addr" id="addr" data-component="wallet-address"></div>
+    <p class="disclaimer" id="disclaimer"></p>
+    <button class="btn primary" id="btn-open" data-testid="open-app">OPEN OPENZOO</button>
+    <button class="btn danger" id="btn-disconnect" data-testid="disconnect-button">DISCONNECT</button>
+  </div>
+
+  <div class="powered">CordovaSeeker shell · OpenZoo iOS · no MWA</div>
+
+  <script src="cordova.js"></script>
+  <script src="vendor/nacl-fast.min.js"></script>
+  <script src="vendor/bs58.js"></script>
+  <script src="js/openzoo-crypto.js"></script>
+  <script src="js/wallet-ios.js"></script>
+  <script>
+  'use strict';
+
+  var connectedAddress = null;
+  var connectedMethod = null;
+  var GAME_URL = 'app/index.html';
+  var GAME_ORIGIN = '*';
+
+  var $picker = document.getElementById('picker');
+  var $status = document.getElementById('status');
+  var $connected = document.getElementById('connected');
+  var $addr = document.getElementById('addr');
+  var $label = document.getElementById('connected-label');
+  var $disclaimer = document.getElementById('disclaimer');
+
+  function log(msg) { console.log('[wallet-shell] ' + msg); }
+  function setStatus(msg) { $status.textContent = msg || ''; }
+
+  function shortAddr(address) {
+    return address.slice(0, 4) + '...' + address.slice(-4);
+  }
+
+  function showConnected(address, method, extra) {
+    connectedAddress = address;
+    connectedMethod = method;
+    $picker.style.display = 'none';
+    $connected.style.display = 'flex';
+    $addr.textContent = address;
+    $label.textContent = 'CONNECTED · ' + method.toUpperCase();
+    $disclaimer.textContent = (extra && extra.disclaimer) ? extra.disclaimer : '';
+    setStatus('');
+    log('Connected via ' + method + ': ' + shortAddr(address));
+  }
+
+  function launchApp() {
+    $picker.style.display = 'none';
+    $connected.style.display = 'none';
+    var old = document.getElementById('game');
+    if (old) old.remove();
+    var iframe = document.createElement('iframe');
+    iframe.id = 'game';
+    iframe.allow = 'fullscreen';
+    iframe.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;border:none;z-index:9999;';
+    document.body.appendChild(iframe);
+    if (connectedAddress) {
+      var sendWalletInfo = function() {
+        iframe.contentWindow.postMessage({
+          type: 'wallet-connected',
+          address: connectedAddress,
+          method: connectedMethod
+        }, GAME_ORIGIN);
+        log('Sent wallet-connected to iframe');
+      };
+      iframe.addEventListener('load', function onLoad() {
+        iframe.removeEventListener('load', onLoad);
+        setTimeout(sendWalletInfo, 400);
+      });
+    }
+    iframe.src = GAME_URL;
+    log('Loading OpenZoo iframe...');
+  }
+
+  function disconnect() {
+    var iframe = document.getElementById('game');
+    if (iframe && connectedAddress) {
+      try { iframe.contentWindow.postMessage({ type: 'wallet-disconnected' }, GAME_ORIGIN); } catch (_) {}
+    }
+    if (iframe) iframe.remove();
+    $picker.style.display = 'flex';
+    $connected.style.display = 'none';
+    connectedAddress = null;
+    connectedMethod = null;
+    OpenZooIOSWallet.clearDeeplinkSession();
+    setStatus('');
+    log('Disconnected');
+  }
+
+  function respondToIframe(payload) {
+    var iframe = document.getElementById('game');
+    if (!iframe) return;
+    iframe.contentWindow.postMessage(payload, GAME_ORIGIN);
+  }
+
+  function connectPhantom() {
+    setStatus('Checking for Phantom...');
+    OpenZooIOSWallet.connectDeeplink('phantom').then(function (result) {
+      setStatus((result && result.warning) ? result.warning : 'Approve in Phantom, then you will return here.');
+    }).catch(function (err) {
+      setStatus(err.message || String(err));
+    });
+  }
+
+  function connectSolflare() {
+    setStatus('Checking for Solflare...');
+    OpenZooIOSWallet.connectDeeplink('solflare').then(function (result) {
+      setStatus((result && result.warning) ? result.warning : 'Approve in Solflare, then you will return here.');
+    }).catch(function (err) {
+      setStatus(err.message || String(err));
+    });
+  }
+
+  function connectBurner() {
+    setStatus('Loading local key...');
+    OpenZooIOSWallet.connectBurner().then(function (result) {
+      showConnected(result.address, 'burner', result);
+    }).catch(function (err) {
+      setStatus(err.message || String(err));
+    });
+  }
+
+  function applyRedirect(url) {
+    OpenZooIOSWallet.handleRedirectUrl(url).then(function (result) {
+      if (!result) return;
+      if (result.type === 'connected') {
+        showConnected(result.address, result.method);
+        return;
+      }
+      if (result.type === 'signed-tx') {
+        respondToIframe({
+          type: 'wallet-sign-transaction-response',
+          id: result.id,
+          signedTransaction: result.signedTransaction
+        });
+        setStatus('Transaction signed. Returning to OpenZoo.');
+        return;
+      }
+      if (result.type === 'signed-msg') {
+        respondToIframe({
+          type: 'wallet-sign-response',
+          id: result.id,
+          signature: result.signature
+        });
+      }
+    }).catch(function (err) {
+      var pending = OpenZooIOSWallet.loadPersisted().pending;
+      if (pending && pending.kind === 'sign-tx') {
+        respondToIframe({
+          type: 'wallet-sign-transaction-response',
+          id: pending.id,
+          error: err.message || String(err)
+        });
+      } else if (pending && pending.kind === 'sign-msg') {
+        respondToIframe({
+          type: 'wallet-sign-response',
+          id: pending.id,
+          error: err.message || String(err)
+        });
+      }
+      setStatus(err.message || String(err));
+    });
+  }
+
+  window.handleOpenURL = function (url) {
+    log('handleOpenURL ' + url);
+    applyRedirect(url);
+  };
+
+  document.addEventListener('resume', function () {
+    log('resume');
+  }, false);
+
+  window.addEventListener('message', function (event) {
+    var gameFrame = document.getElementById('game');
+    if (!gameFrame || event.source !== gameFrame.contentWindow) return;
+    var data = event.data;
+    if (!data || !data.type) return;
+
+    if (data.type === 'wallet-disconnect') {
+      disconnect();
+      return;
+    }
+
+    if (data.type === 'wallet-request-info' && connectedAddress) {
+      gameFrame.contentWindow.postMessage({
+        type: 'wallet-connected',
+        address: connectedAddress,
+        method: connectedMethod
+      }, GAME_ORIGIN);
+      return;
+    }
+
+    if (data.type === 'wallet-sign-message') {
+      var msgRespond = function (payload) {
+        payload.type = 'wallet-sign-response';
+        payload.id = data.id;
+        respondToIframe(payload);
+      };
+      if (connectedMethod === 'burner') {
+        OpenZooIOSWallet.signMessageBurner(data.message).then(function (r) {
+          msgRespond({ signature: r.signature });
+        }).catch(function (err) { msgRespond({ error: err.message || String(err) }); });
+        return;
+      }
+      if (connectedMethod === 'phantom' || connectedMethod === 'solflare') {
+        OpenZooIOSWallet.signMessageDeeplink(data.message, data.id).catch(function (err) {
+          msgRespond({ error: err.message || String(err) });
+        });
+        return;
+      }
+      msgRespond({ error: 'No wallet connected' });
+      return;
+    }
+
+    if (data.type === 'wallet-sign-transaction') {
+      var txRespond = function (payload) {
+        payload.type = 'wallet-sign-transaction-response';
+        payload.id = data.id;
+        respondToIframe(payload);
+      };
+      if (!data.transaction) {
+        txRespond({ error: 'Missing unsigned transaction' });
+        return;
+      }
+      if (connectedMethod === 'burner') {
+        OpenZooIOSWallet.signTransactionBurner(data.transaction).then(function (r) {
+          txRespond({ signedTransaction: r.signedTransaction });
+        }).catch(function (err) { txRespond({ error: err.message || String(err) }); });
+        return;
+      }
+      if (connectedMethod === 'phantom' || connectedMethod === 'solflare') {
+        OpenZooIOSWallet.signTransactionDeeplink(data.transaction, data.id).catch(function (err) {
+          txRespond({ error: err.message || String(err) });
+        });
+        return;
+      }
+      txRespond({ error: 'No wallet connected' });
+    }
+  });
+
+  document.getElementById('btn-phantom').addEventListener('click', connectPhantom);
+  document.getElementById('btn-solflare').addEventListener('click', connectSolflare);
+  document.getElementById('btn-burner').addEventListener('click', connectBurner);
+  document.getElementById('btn-guest').addEventListener('click', launchApp);
+  document.getElementById('btn-open').addEventListener('click', launchApp);
+  document.getElementById('btn-disconnect').addEventListener('click', disconnect);
+
+  log('Shell loaded');
+  document.addEventListener('deviceready', function () {
+    log('deviceready');
+    var persisted = OpenZooIOSWallet.loadPersisted();
+    if (persisted.address && persisted.method && persisted.method !== 'MWA') {
+      if (persisted.method === 'burner') {
+        OpenZooIOSWallet.connectBurner().then(function (result) {
+          showConnected(result.address, 'burner', result);
+        });
+      } else if (persisted.session) {
+        showConnected(persisted.address, persisted.method);
+      }
+    }
+  }, false);
+  </script>
+</body>
+</html>

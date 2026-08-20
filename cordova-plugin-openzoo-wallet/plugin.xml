@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin xmlns="http://apache.org/cordova/ns/plugins/1.0"
+        id="cordova-plugin-openzoo-wallet"
+        version="1.0.0">
+    <name>OpenZoo Wallet</name>
+    <description>Keychain secret store, canOpenURL, and system URL open for the OpenZoo iOS shell</description>
+
+    <js-module src="www/openzoo-wallet.js" name="OpenZooWallet">
+        <clobbers target="OpenZooWallet" />
+    </js-module>
+
+    <platform name="ios">
+        <config-file target="config.xml" parent="/*">
+            <feature name="OpenZooWallet">
+                <param name="ios-package" value="OpenZooWallet" />
+            </feature>
+        </config-file>
+        <header-file src="src/ios/OpenZooWallet.h" />
+        <source-file src="src/ios/OpenZooWallet.m" />
+        <framework src="Security.framework" />
+    </platform>
+</plugin>

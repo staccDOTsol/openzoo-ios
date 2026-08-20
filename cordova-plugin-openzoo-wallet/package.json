@@ -1,0 +1,16 @@
+{
+  "name": "cordova-plugin-openzoo-wallet",
+  "version": "1.0.0",
+  "description": "iOS Keychain bridge + canOpenURL for OpenZoo burner and Phantom/Solflare deeplinks",
+  "cordova": {
+    "id": "cordova-plugin-openzoo-wallet",
+    "platforms": [
+      "ios"
+    ]
+  },
+  "keywords": [
+    "ecosystem:cordova",
+    "cordova-ios"
+  ],
+  "license": "MIT"
+}

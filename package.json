@@ -1,0 +1,36 @@
+{
+  "name": "fun.openzoo.ios",
+  "displayName": "OpenZoo",
+  "version": "1.0.0",
+  "description": "OpenZoo iOS — CordovaSeeker shell + iframe chat/bind/stats against x402-tokens.fly.dev. Phantom/Solflare deeplinks or in-app burner. No MWA.",
+  "main": "index.js",
+  "scripts": {
+    "platform:ios": "cordova platform add ios",
+    "build": "cordova build ios",
+    "build:ios": "cordova build ios",
+    "run:ios": "cordova run ios",
+    "clean:ios": "cordova clean ios",
+    "requirements": "cordova requirements ios",
+    "ios": "cordova platform add ios && cordova build ios",
+    "smoke": "bash scripts/smoke-gateway.sh"
+  },
+  "keywords": [
+    "ecosystem:cordova",
+    "cordova-ios",
+    "openzoo",
+    "solana",
+    "x402"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "cordova": "^12.0.0",
+    "cordova-ios": "^7.1.1",
+    "cordova-plugin-openzoo-wallet": "file:cordova-plugin-openzoo-wallet"
+  },
+  "cordova": {
+    "platforms": [],
+    "plugins": {
+      "cordova-plugin-openzoo-wallet": {}
+    }
+  }
+}
