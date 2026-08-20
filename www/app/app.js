@@ -1374,6 +1374,7 @@ renderSidebar();
 renderLog();
 renderHeader();
 renderHud();
+window.parent.postMessage({ type: 'openzoo-chrome-ready' }, '*');
 loadModels();
 ensureDirectory().catch(function () {});
 retryPending402();

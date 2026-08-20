@@ -57,9 +57,32 @@
     #copiedToast { position: fixed; z-index: 80; left: 50%; top: 18px; transform: translateX(-50%); padding: 7px 14px; border-radius: 999px; background: #b8f240; color: #0b0b0d; font: 700 12px/1.2 -apple-system, sans-serif; opacity: 0; pointer-events: none; transition: opacity .15s ease; }
     #copiedToast.show { opacity: 1; }
     .powered { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 12px; font-size: 10px; letter-spacing: 1.4px; color: #4c4d5a; }
+    #oz-boot {
+      position: fixed; inset: 0; z-index: 10000;
+      background: #0a0a12;
+      display: flex; align-items: center; justify-content: center;
+      color: #8e8e93;
+      font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: .04em;
+    }
+    #oz-boot.hide { display: none; }
+    #oz-boot .oz-dot {
+      display: inline-block;
+      animation: oz-boot-dot 1.2s infinite;
+      opacity: .2;
+    }
+    #oz-boot .oz-dot:nth-child(2) { animation-delay: .2s; }
+    #oz-boot .oz-dot:nth-child(3) { animation-delay: .4s; }
+    #oz-boot .oz-dot:nth-child(4) { animation-delay: .6s; }
+    @keyframes oz-boot-dot {
+      0%, 20% { opacity: .2; }
+      40% { opacity: 1; }
+      100% { opacity: .2; }
+    }
   </style>
 </head>
 <body>
+  <div id="oz-boot" aria-live="polite" aria-busy="true"><span>starting</span><span class="oz-dot">.</span><span class="oz-dot">.</span><span class="oz-dot">.</span></div>
   <div id="copiedToast" role="status">copied</div>
   <div class="logo">🦓</div>
   <div class="title">OPENZOO</div>
@@ -109,8 +132,10 @@
   var catalog = null;
   var debugBuild = false;
   var testFlightBuild = false;
+  var autoEnter = false;
   var GAME_URL = 'app/index.html';
   var GAME_ORIGIN = '*';
+  var bootHideTimer = null;
 
   var $status = document.getElementById('status');
   var $tiers = document.getElementById('tiers');
@@ -147,6 +172,30 @@
     return OpenZooIOSStore.loadSubscription();
   }
 
+  function showBoot() {
+    var el = document.getElementById('oz-boot');
+    if (!el) return;
+    el.classList.remove('hide');
+    el.setAttribute('aria-busy', 'true');
+  }
+
+  function hideBoot() {
+    var el = document.getElementById('oz-boot');
+    if (el) {
+      el.classList.add('hide');
+      el.setAttribute('aria-busy', 'false');
+    }
+    if (bootHideTimer) {
+      clearTimeout(bootHideTimer);
+      bootHideTimer = null;
+    }
+  }
+
+  function armBootFallback() {
+    if (bootHideTimer) clearTimeout(bootHideTimer);
+    bootHideTimer = setTimeout(hideBoot, 4000);
+  }
+
   function sendSubscription(iframe) {
     var sub = currentSub() || {};
     var target = iframe || document.getElementById('game');
@@ -164,6 +213,9 @@
   }
 
   function launchApp() {
+    autoEnter = true;
+    showBoot();
+    armBootFallback();
     document.getElementById('paywall').style.display = 'none';
     document.getElementById('advanced').classList.remove('show');
     var old = document.getElementById('game');
@@ -175,6 +227,7 @@
     document.body.appendChild(iframe);
     iframe.addEventListener('load', function onLoad() {
       iframe.removeEventListener('load', onLoad);
+      setTimeout(hideBoot, 50);
       setTimeout(function () {
         sendSubscription(iframe);
         if (connectedAddress) {
@@ -190,6 +243,7 @@
   }
 
   function showPaywall() {
+    hideBoot();
     var iframe = document.getElementById('game');
     if (iframe) iframe.remove();
     document.getElementById('paywall').style.display = 'block';
@@ -401,6 +455,7 @@
     var data = event.data;
     if (!data || !data.type) return;
 
+    if (data.type === 'openzoo-chrome-ready') { hideBoot(); return; }
     if (data.type === 'wallet-disconnect') { disconnect(); return; }
     if (data.type === 'show-paywall') { showPaywall(); return; }
     if (data.type === 'show-advanced-wallet') {
@@ -481,6 +536,7 @@
   function maybeLaunchFromSaved() {
     var saved = currentSub();
     if (!OpenZooIOSStore.hasAccess(saved, { debug: debugBuild, testFlight: testFlightBuild })) return false;
+    autoEnter = true;
     if (saved.pending && saved.jws) {
       OpenZooBilling.exchangeAppStore(saved).then(function (ex) {
         if (ex.ok && ex.key) {
@@ -543,7 +599,13 @@
     }
   }, false);
 
+  function hideBootIfFirstRun() {
+    if (!autoEnter) hideBoot();
+  }
+
   boot();
+  if (document.readyState === 'complete') hideBootIfFirstRun();
+  else document.addEventListener('DOMContentLoaded', hideBootIfFirstRun);
   </script>
 </body>
 </html>
