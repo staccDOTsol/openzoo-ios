@@ -57,7 +57,7 @@ cordova platform add ios && cordova build ios
 
 Equivalent npm scripts: `npm run platform:ios` then `npm run build:ios`, or `npm run ios`.
 
-`cordova platform add ios` may fail on Linux without Xcode. That is expected. The Cordova project is still complete for a Mac build.
+On this Linux VM, `cordova platform add ios` created `platforms/ios` (gitignored) and installed only `cordova-plugin-openzoo-wallet`. `cordova build ios` then failed: `xcodebuild was not found`. That compile step needs a Mac. The iOS Simulator was not run. TestFlight was not started.
 
 ## Gateway smoke (works on Linux)
 
