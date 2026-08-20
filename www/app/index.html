@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src https://x402-tokens.fly.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
+  <title>OpenZoo</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header id="wallet-bar">
+    <div>
+      <div class="brand">OPENZOO</div>
+      <div id="wallet-label">no wallet</div>
+    </div>
+    <button type="button" id="exit-btn">✕ SHELL</button>
+  </header>
+
+  <nav id="tabs">
+    <button type="button" class="tab on" data-tab="chat">Chat</button>
+    <button type="button" class="tab" data-tab="bind">Bind</button>
+    <button type="button" class="tab" data-tab="stats">Stats</button>
+  </nav>
+
+  <section id="panel-chat" class="panel">
+    <div class="row">
+      <label for="model">Model</label>
+      <select id="model"></select>
+    </div>
+    <div id="chat-log" aria-live="polite"></div>
+    <form id="chat-form">
+      <textarea id="chat-input" rows="3" placeholder="Message the gateway…"></textarea>
+      <button type="submit" id="send-btn">SEND</button>
+    </form>
+  </section>
+
+  <section id="panel-bind" class="panel hidden">
+    <p class="hint">Bind is free. Paste text or pick a text file. The returned <code>context_id</code> can be attached to chat as <code>X-HRR-Context</code>. If the gateway says the context is gone, re-bind — do not pay.</p>
+    <textarea id="corpus" rows="8" placeholder="Paste a corpus…"></textarea>
+    <div class="row">
+      <input type="file" id="corpus-file" accept=".txt,text/plain,text/*">
+    </div>
+    <label class="check">
+      <input type="checkbox" id="attach-context" checked>
+      Attach context_id to the next chat calls
+    </label>
+    <button type="button" id="bind-btn">BIND CORPUS</button>
+    <pre id="bind-out" class="json"></pre>
+  </section>
+
+  <section id="panel-stats" class="panel hidden">
+    <p class="hint">Live <code>GET /v1/stats</code> from x402-tokens.fly.dev. Rendered as returned.</p>
+    <button type="button" id="stats-btn">REFRESH STATS</button>
+    <pre id="stats-out" class="json"></pre>
+  </section>
+
+  <div id="modal" class="hidden" role="dialog" aria-modal="true">
+    <div class="sheet">
+      <h2 id="modal-title">Payment</h2>
+      <p id="modal-lead"></p>
+      <div id="modal-body"></div>
+      <div id="modal-actions"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
