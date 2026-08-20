@@ -40,10 +40,18 @@
       <div id="headerDials">
         <button class="dial" id="header-new-chat" type="button">New chat</button>
         <select class="dial" id="model" aria-label="Model"></select>
+        <button class="dial" id="hud-btn" type="button" aria-label="Savings">◎</button>
         <button class="dial" id="plan-btn" type="button">plan</button>
         <button class="icon-btn" id="exit-btn" title="Plans">✕</button>
       </div>
     </header>
+    <div id="hud">
+      <div class="htitle">this session</div>
+      <div class="hrow"><span>paid</span><span id="hud-spent">$0</span></div>
+      <div class="hrow"><span>without openzoo</span><span id="hud-direct">$0</span></div>
+      <div class="hrow"><span>multiple</span><span id="hud-saved">—</span></div>
+      <div class="hfoot" id="hud-foot">0 paid calls this session</div>
+    </div>
 
     <div id="log" aria-live="polite"></div>
 
@@ -103,6 +111,7 @@
   <script src="../js/openzoo-crypto.js"></script>
   <script src="../js/user-errors.js"></script>
   <script src="../js/pay402.js"></script>
+  <script src="../js/chat-spill.js"></script>
   <script src="../js/clipboard.js"></script>
   <script src="../js/billing.js"></script>
   <script src="../js/rails.js"></script>
