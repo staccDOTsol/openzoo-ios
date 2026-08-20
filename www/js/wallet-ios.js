@@ -10,24 +10,43 @@
     phantom: {
       method: 'phantom',
       name: 'Phantom',
+      httpsBase: 'https://phantom.app/ul/v1/',
+      appBase: 'phantom://ul/v1/',
       connectUrl: 'https://phantom.app/ul/v1/connect',
       signTxUrl: 'https://phantom.app/ul/v1/signTransaction',
+      signSendUrl: 'https://phantom.app/ul/v1/signAndSendTransaction',
       signMsgUrl: 'https://phantom.app/ul/v1/signMessage',
-      probe: 'phantom://app',
+      probe: 'phantom://',
       encPubField: 'phantom_encryption_public_key',
       redirect: 'openzoo://phantom'
     },
     solflare: {
       method: 'solflare',
       name: 'Solflare',
+      httpsBase: 'https://solflare.com/ul/v1/',
+      appBase: 'solflare://ul/v1/',
       connectUrl: 'https://solflare.com/ul/v1/connect',
       signTxUrl: 'https://solflare.com/ul/v1/signTransaction',
+      signSendUrl: 'https://solflare.com/ul/v1/signAndSendTransaction',
       signMsgUrl: 'https://solflare.com/ul/v1/signMessage',
       probe: 'solflare://',
       encPubField: 'solflare_encryption_public_key',
       redirect: 'openzoo://solflare'
     }
   };
+
+  function walletError(params) {
+    var code = params.get('errorCode') || '';
+    var msg = params.get('errorMessage') || '';
+    if (!code && !msg) return null;
+    if (code && msg) return code + ': ' + msg;
+    return msg || ('Wallet error ' + code);
+  }
+
+  function methodUrl(provider, method, installed) {
+    if (installed === true && provider.appBase) return provider.appBase + method;
+    return provider.httpsBase + method;
+  }
 
   function lsGet(k) {
     try { return localStorage.getItem(STORAGE_PREFIX + k); } catch (_) { return null; }
@@ -170,7 +189,7 @@
           redirect_link: provider.redirect,
           cluster: 'mainnet-beta'
         });
-        var url = provider.connectUrl + '?' + params.toString();
+        var url = methodUrl(provider, 'connect', probe.installed) + '?' + params.toString();
         if (probe.installed === null) {
           return openExternal(url).then(function () {
             return {
@@ -210,7 +229,38 @@
           redirect_link: provider.redirect,
           payload: bs58.encode(enc.bytes)
         });
-        return openExternal(provider.signTxUrl + '?' + params.toString());
+        return openExternal(methodUrl(provider, 'signTransaction', probe.installed) + '?' + params.toString());
+      });
+    });
+  }
+
+  function signAndSendTransactionDeeplink(unsignedTxB64, requestId) {
+    var persisted = loadPersisted();
+    var provider = PROVIDERS[persisted.method];
+    if (!provider || !persisted.session || !persisted.sharedSecretB58) {
+      return Promise.reject(new Error('No deeplink wallet session. Connect Phantom or Solflare first.'));
+    }
+    return canOpen(provider.probe).then(function (probe) {
+      if (probe.installed === false) {
+        throw new Error(provider.name + ' is not installed on this phone.');
+      }
+      return ensureDappKeyPair().then(function (pair) {
+        var shared = bs58.decode(persisted.sharedSecretB58);
+        var txB58 = bs58.encode(OpenZooCrypto.base64ToBytes(unsignedTxB64));
+        var enc = OpenZooCrypto.encryptPayload({
+          transaction: txB58,
+          session: persisted.session
+        }, shared);
+        persistSession({
+          pending: { kind: 'sign-send-tx', provider: persisted.method, id: requestId }
+        });
+        var params = new URLSearchParams({
+          dapp_encryption_public_key: bs58.encode(pair.publicKey),
+          nonce: bs58.encode(enc.nonce),
+          redirect_link: provider.redirect,
+          payload: bs58.encode(enc.bytes)
+        });
+        return openExternal(methodUrl(provider, 'signAndSendTransaction', probe.installed) + '?' + params.toString());
       });
     });
   }
@@ -241,7 +291,7 @@
           redirect_link: provider.redirect,
           payload: bs58.encode(enc.bytes)
         });
-        return openExternal(provider.signMsgUrl + '?' + params.toString());
+        return openExternal(methodUrl(provider, 'signMessage', probe.installed) + '?' + params.toString());
       });
     });
   }
@@ -255,9 +305,13 @@
       return Promise.reject(new Error('Malformed wallet redirect'));
     }
     var params = url.searchParams;
-    if (params.get('errorCode') || params.get('errorMessage')) {
+    var errText = walletError(params);
+    if (errText) {
+      var failedPending = loadPersisted().pending;
       lsDel('pending');
-      return Promise.reject(new Error(params.get('errorMessage') || ('Wallet error ' + params.get('errorCode'))));
+      var fail = new Error(errText);
+      fail.pending = failedPending;
+      return Promise.reject(fail);
     }
     var host = (url.hostname || url.host || '').toLowerCase();
     var providerId = host === 'solflare' ? 'solflare' : 'phantom';
@@ -306,6 +360,16 @@
           type: 'signed-tx',
           id: pending.id,
           signedTransaction: OpenZooCrypto.bytesToBase64(bs58.decode(opened.transaction))
+        };
+      }
+
+      if (pending.kind === 'sign-send-tx') {
+        if (!opened.signature) throw new Error('Wallet did not return a signature');
+        lsDel('pending');
+        return {
+          type: 'signed-send-tx',
+          id: pending.id,
+          signature: opened.signature
         };
       }
 
@@ -388,13 +452,16 @@
     });
   }
 
-  root.OpenZooIOSWallet = {
+  var api = {
     PROVIDERS: PROVIDERS,
     pluginReady: pluginReady,
     canOpen: canOpen,
     connectDeeplink: connectDeeplink,
     signTransactionDeeplink: signTransactionDeeplink,
+    signAndSendTransactionDeeplink: signAndSendTransactionDeeplink,
     signMessageDeeplink: signMessageDeeplink,
+    methodUrl: methodUrl,
+    walletError: walletError,
     handleRedirectUrl: handleRedirectUrl,
     connectBurner: connectBurner,
     createBurner: createBurner,
@@ -405,4 +472,6 @@
     clearDeeplinkSession: clearDeeplinkSession,
     BURNER_DISCLAIMER: 'Local disposable key on this phone. We never custody it. We do not sell crypto. You fund it yourself.'
   };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.OpenZooIOSWallet = api;
 })(typeof window !== 'undefined' ? window : globalThis);

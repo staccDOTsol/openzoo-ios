@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <widget id="fun.openzoo.ios" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
     <name>OpenZoo</name>
-    <description>OpenZoo iOS — chat + bind + stats against x402-tokens.fly.dev. Phantom/Solflare deeplinks or in-app burner. No MWA.</description>
+    <description>OpenZoo iOS — grokui-style chat in a CordovaSeeker shell. Phantom/Solflare deeplinks or in-app burner. No MWA.</description>
     <author href="https://github.com/staccDOTsol/openzoo-ios">
         OpenZoo
     </author>
@@ -10,6 +10,9 @@
     <content src="index.html" />
 
     <access origin="https://x402-tokens.fly.dev" />
+    <access origin="https://x402.accrue.fund" />
+    <access origin="https://api.mainnet-beta.solana.com" />
+    <access origin="https://solana-rpc.publicnode.com" />
     <access origin="https://phantom.app" />
     <access origin="https://solflare.com" />
 

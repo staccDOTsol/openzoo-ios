@@ -2,7 +2,7 @@
   "name": "fun.openzoo.ios",
   "displayName": "OpenZoo",
   "version": "1.0.0",
-  "description": "OpenZoo iOS — CordovaSeeker shell + iframe chat/bind/stats against x402-tokens.fly.dev. Phantom/Solflare deeplinks or in-app burner. No MWA.",
+  "description": "OpenZoo iOS — CordovaSeeker shell + grokui-style chat. Live x402 rails, wrap/top-up, Phantom/Solflare deeplinks or in-app burner. No MWA.",
   "main": "index.js",
   "scripts": {
     "platform:ios": "cordova platform add ios",
@@ -12,7 +12,8 @@
     "clean:ios": "cordova clean ios",
     "requirements": "cordova requirements ios",
     "ios": "cordova platform add ios && cordova build ios",
-    "smoke": "bash scripts/smoke-gateway.sh"
+    "smoke": "bash scripts/smoke-gateway.sh",
+    "test": "node test/supported-rails.test.js"
   },
   "keywords": [
     "ecosystem:cordova",

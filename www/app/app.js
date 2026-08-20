@@ -2,51 +2,93 @@
 
 var GATEWAY = 'https://x402-tokens.fly.dev';
 var DEFAULT_MODEL = 'openai/gpt-4o-mini';
-var SOLANA_NETWORK = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
-var ALLOWED_RAILS = {
-  '6ZjjxcoicqM4nniddkuPVwew4PDwY3swbfHsGbCuLuTv': { symbol: 'yUSDCx', decimals: 6 },
-  'FXYkwMtfKpA174rp8ixVeiGs5TYGaBsYRrHE3KrR449B': { symbol: 'wTOKENx', decimals: 6 },
-  '3FViQRMqtG6dUDFxZyyVvpM9xTHsKdX7uqZ5jvL8NZ35': { symbol: 'wLEOSx', decimals: 9 }
+var STORE_KEY = 'openzoo.ios.threads.v1';
+var TEXT_EXTS = {
+  '.txt': 1, '.md': 1, '.json': 1, '.jsonl': 1, '.csv': 1, '.tsv': 1, '.log': 1,
+  '.html': 1, '.htm': 1, '.xml': 1, '.py': 1, '.js': 1, '.mjs': 1, '.cjs': 1,
+  '.ts': 1, '.tsx': 1, '.jsx': 1, '.rs': 1, '.go': 1, '.java': 1, '.c': 1,
+  '.h': 1, '.cpp': 1, '.rb': 1, '.php': 1, '.sh': 1, '.sql': 1, '.yaml': 1,
+  '.yml': 1, '.toml': 1, '.ini': 1
 };
-var TWIN_NOTE = 'These settle in wrapped twins, not plain USDC. If the wallet doesn’t hold the twin, simulation fails.';
+var AVATAR_COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#ff453a', '#bf5af2', '#64d2ff'];
 
 var wallet = { address: null, method: null };
-var contextId = null;
 var pendingSign = {};
 var signSeq = 1;
-var messages = [{
-  role: 'system',
-  content: 'You are OpenZoo on iOS. You only chat, bind a text corpus, and read gateway stats against https://x402-tokens.fly.dev. Do not invent local servers or desktop tool commands.'
-}];
+var threads = [];
+var activeId = null;
+var pendingFiles = [];
+var busy = false;
+var directory = null;
 
-var $walletLabel = document.getElementById('wallet-label');
+var $log = document.getElementById('log');
+var $threads = document.getElementById('threads');
+var $inp = document.getElementById('inp');
 var $model = document.getElementById('model');
-var $chatLog = document.getElementById('chat-log');
-var $chatInput = document.getElementById('chat-input');
-var $bindOut = document.getElementById('bind-out');
-var $statsOut = document.getElementById('stats-out');
+var $chips = document.getElementById('attachChips');
+var $plusMenu = document.getElementById('plusMenu');
+var $sidebar = document.getElementById('sidebar');
+var $scrim = document.getElementById('scrim');
 var $modal = document.getElementById('modal');
 var $modalTitle = document.getElementById('modal-title');
 var $modalLead = document.getElementById('modal-lead');
 var $modalBody = document.getElementById('modal-body');
 var $modalActions = document.getElementById('modal-actions');
 
-function addBubble(who, text, cls) {
-  var el = document.createElement('div');
-  el.className = 'bubble' + (cls ? ' ' + cls : '');
-  el.innerHTML = '<div class="who"></div><div class="txt"></div>';
-  el.querySelector('.who').textContent = who;
-  el.querySelector('.txt').textContent = text;
-  $chatLog.appendChild(el);
-  $chatLog.scrollTop = $chatLog.scrollHeight;
+function uid() {
+  return 't-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-function setWalletLabel() {
-  if (!wallet.address) {
-    $walletLabel.textContent = 'no wallet — connect in the shell to pay';
-    return;
+function loadThreads() {
+  try {
+    var raw = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+    threads = Array.isArray(raw) ? raw : [];
+  } catch (_) {
+    threads = [];
   }
-  $walletLabel.textContent = wallet.address.slice(0, 4) + '…' + wallet.address.slice(-4) + ' · ' + wallet.method;
+  if (!threads.length) threads.push(blankThread());
+  activeId = threads[0].id;
+}
+
+function saveThreads() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(threads)); } catch (_) {}
+}
+
+function blankThread() {
+  return {
+    id: uid(),
+    name: 'New chat',
+    model: DEFAULT_MODEL,
+    messages: [],
+    contextId: null,
+    usingLabel: '',
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+}
+
+function activeThread() {
+  return threads.filter(function (t) { return t.id === activeId; })[0] || threads[0];
+}
+
+function initials(name) {
+  return String(name || 'OZ').replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() || 'OZ';
+}
+
+function avatarColor(id) {
+  var n = 0;
+  String(id || '').split('').forEach(function (c) { n += c.charCodeAt(0); });
+  return AVATAR_COLORS[n % AVATAR_COLORS.length];
+}
+
+function previewOf(thread) {
+  for (var i = thread.messages.length - 1; i >= 0; i--) {
+    var m = thread.messages[i];
+    if (m.role === 'user' || m.role === 'assistant') {
+      return String(m.content || '').replace(/\s+/g, ' ').slice(0, 80);
+    }
+  }
+  return thread.usingLabel || 'Say anything';
 }
 
 function jsonText(value) {
@@ -56,32 +98,6 @@ function jsonText(value) {
 function isContextMissing(payload, status) {
   var blob = typeof payload === 'string' ? payload : jsonText(payload || {});
   return status === 404 && /context_not_found/i.test(blob);
-}
-
-function allowedRail(row) {
-  if (!row || row.network !== SOLANA_NETWORK) return false;
-  return Object.prototype.hasOwnProperty.call(ALLOWED_RAILS, row.asset);
-}
-
-function formatAmount(row) {
-  var meta = ALLOWED_RAILS[row.asset] || {};
-  var decimals = (row.extra && row.extra.decimals != null) ? row.extra.decimals : (meta.decimals || 0);
-  var raw = row.maxAmountRequired || '0';
-  var n = Number(raw);
-  if (!isFinite(n)) return raw + ' atoms';
-  return (n / Math.pow(10, decimals)).toFixed(Math.min(decimals, 6)) + ' ' + (row.extra && row.extra.symbol || meta.symbol || row.asset);
-}
-
-function closeModal() {
-  $modal.classList.add('hidden');
-  $modalBody.innerHTML = '';
-  $modalActions.innerHTML = '';
-}
-
-function openModal(title, lead) {
-  $modalTitle.textContent = title;
-  $modalLead.textContent = lead || '';
-  $modal.classList.remove('hidden');
 }
 
 function api(path, options) {
@@ -105,71 +121,69 @@ function api(path, options) {
   });
 }
 
-function loadModels() {
-  return api('/v1/models').then(function (out) {
-    var rows = (out.data && out.data.data) || [];
-    $model.innerHTML = '';
-    var ids = rows.map(function (m) { return m.id; }).filter(Boolean);
-    if (ids.indexOf(DEFAULT_MODEL) === -1 && ids.length) {
-      ids.unshift(DEFAULT_MODEL);
-    }
-    if (ids.indexOf(DEFAULT_MODEL) === -1) ids.unshift(DEFAULT_MODEL);
-    var seen = {};
-    ids.forEach(function (id) {
-      if (seen[id]) return;
-      seen[id] = true;
-      var opt = document.createElement('option');
-      opt.value = id;
-      opt.textContent = id;
-      if (id === DEFAULT_MODEL) opt.selected = true;
-      $model.appendChild(opt);
+function ensureDirectory() {
+  if (directory) return Promise.resolve(directory);
+  return OpenZooRails.loadSupported().then(function (parsed) {
+    directory = parsed;
+    return parsed;
+  });
+}
+
+function closeModal() {
+  $modal.classList.add('hidden');
+  $modalBody.innerHTML = '';
+  $modalActions.innerHTML = '';
+}
+
+function openModal(title, lead) {
+  $modalTitle.textContent = title;
+  $modalLead.textContent = lead || '';
+  $modal.classList.remove('hidden');
+}
+
+function askChoice(title, lead, choices) {
+  return new Promise(function (resolve) {
+    openModal(title, lead);
+    $modalBody.innerHTML = '';
+    choices.forEach(function (choice) {
+      var el = document.createElement('div');
+      el.className = 'rail';
+      el.innerHTML = '<strong></strong><div class="muted"></div>';
+      el.querySelector('strong').textContent = choice.label;
+      if (choice.detail) el.querySelector('.muted').textContent = choice.detail;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = choice.action || 'Use this';
+      btn.onclick = function () { closeModal(); resolve(choice.value); };
+      el.appendChild(btn);
+      $modalBody.appendChild(el);
     });
-    if (!rows.length) {
-      addBubble('gateway', 'GET /v1/models failed; left the last live default ' + DEFAULT_MODEL + ' selected.', 'err');
-    }
-  }).catch(function (err) {
-    var opt = document.createElement('option');
-    opt.value = DEFAULT_MODEL;
-    opt.textContent = DEFAULT_MODEL;
-    $model.appendChild(opt);
-    addBubble('gateway', 'Could not load models: ' + (err.message || err), 'err');
-  });
-}
-
-function refreshStats() {
-  $statsOut.textContent = 'loading…';
-  return api('/v1/stats').then(function (out) {
-    $statsOut.textContent = jsonText(out.data);
-  }).catch(function (err) {
-    $statsOut.textContent = String(err.message || err);
-  });
-}
-
-function bindCorpus() {
-  var corpus = document.getElementById('corpus').value.trim();
-  if (!corpus) {
-    $bindOut.textContent = 'Paste or pick a text file first.';
-    return Promise.resolve();
-  }
-  var body = { corpus: corpus };
-  if (contextId) body.context_id = contextId;
-  $bindOut.textContent = 'binding…';
-  return api('/v1/hrr/bind', { method: 'POST', body: body }).then(function (out) {
-    $bindOut.textContent = jsonText(out.data);
-    if (out.data && out.data.context_id) {
-      contextId = out.data.context_id;
-    }
-  }).catch(function (err) {
-    $bindOut.textContent = String(err.message || err);
+    $modalActions.innerHTML = '<button type="button" class="ghost" id="modal-cancel">Not now</button>';
+    document.getElementById('modal-cancel').onclick = function () {
+      closeModal();
+      resolve(null);
+    };
   });
 }
 
 function requestSignTransaction(unsignedTxB64) {
   return new Promise(function (resolve, reject) {
     var id = 'tx-' + (signSeq++);
-    pendingSign[id] = { resolve: resolve, reject: reject };
+    pendingSign[id] = { resolve: resolve, reject: reject, kind: 'sign' };
     window.parent.postMessage({
       type: 'wallet-sign-transaction',
+      id: id,
+      transaction: unsignedTxB64
+    }, '*');
+  });
+}
+
+function requestSignAndSend(unsignedTxB64) {
+  return new Promise(function (resolve, reject) {
+    var id = 'send-' + (signSeq++);
+    pendingSign[id] = { resolve: resolve, reject: reject, kind: 'send' };
+    window.parent.postMessage({
+      type: 'wallet-sign-and-send-transaction',
       id: id,
       transaction: unsignedTxB64
     }, '*');
@@ -186,169 +200,547 @@ function encodePayment(envelope, signedTxB64) {
   return btoa(unescape(encodeURIComponent(JSON.stringify(payment))));
 }
 
-function showRailPicker(accepts, resume) {
-  var rails = (accepts || []).filter(allowedRail);
-  openModal('Choose a Solana rail', TWIN_NOTE + ' Pick a twin you can fund. The app will not silently take the first row.');
-  $modalBody.innerHTML = '';
-  if (!rails.length) {
-    $modalBody.innerHTML = '<p>No allowed Solana rails in this 402. OpenZoo iOS only pays yUSDCx / wTOKENx / wLEOSx on solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp.</p>';
-    $modalActions.innerHTML = '<button type="button" id="modal-cancel">CLOSE</button>';
-    document.getElementById('modal-cancel').onclick = closeModal;
-    return;
+function userFacingPayError(err) {
+  var msg = (err && err.message) ? err.message : String(err || 'Something went wrong');
+  if (/underfund|insufficient|0x1|custom program error/i.test(msg)) {
+    return 'This wallet needs a top-up before that message can send.';
   }
-  rails.forEach(function (row) {
-    var meta = ALLOWED_RAILS[row.asset];
-    var el = document.createElement('div');
-    el.className = 'rail';
-    el.innerHTML =
-      '<strong></strong><div class="muted"></div><button type="button">PAY WITH THIS RAIL</button>';
-    el.querySelector('strong').textContent = (row.extra && row.extra.symbol) || meta.symbol;
-    el.querySelector('.muted').textContent =
-      formatAmount(row) + '\n' + row.asset + '\n' + row.network +
-      '\npayTo ' + row.payTo;
-    el.querySelector('button').onclick = function () {
-      confirmAndPay(row, resume);
-    };
-    $modalBody.appendChild(el);
-  });
-  $modalActions.innerHTML = '<button type="button" id="modal-cancel">CANCEL</button>';
-  document.getElementById('modal-cancel').onclick = closeModal;
+  return msg;
 }
 
-function confirmAndPay(row, resume) {
-  if (!wallet.address) {
-    openModal('Wallet required', 'Connect Phantom, Solflare, or the local burner in the shell first. OpenZoo will not fake a connected wallet.');
-    $modalBody.innerHTML = '';
-    $modalActions.innerHTML = '<button type="button" id="modal-cancel">CLOSE</button>';
-    document.getElementById('modal-cancel').onclick = closeModal;
-    return;
+function splitCorpus(text) {
+  var max = 1800000;
+  if (text.length <= max) return [text];
+  var parts = [];
+  var rest = text;
+  while (rest.length > max) {
+    var cut = rest.lastIndexOf('\n\n', max);
+    if (cut < max * 0.5) cut = max;
+    parts.push(rest.slice(0, cut));
+    rest = rest.slice(cut).replace(/^\n+/, '');
   }
-  openModal('Building payment', 'POST /v1/pay/build is free. The gateway constructs the unsigned tx. This phone does not build the payment with web3.js.');
-  $modalBody.textContent = 'asking the gateway…';
-  api('/v1/pay/build', {
-    method: 'POST',
-    body: { accept: row, payer: wallet.address }
-  }).then(function (out) {
-    if (!out.res.ok) {
-      throw new Error(typeof out.data === 'string' ? out.data : jsonText(out.data));
-    }
-    var built = out.data;
-    openModal('Quote — sign, do not broadcast', TWIN_NOTE);
-    $modalBody.innerHTML = '<div class="quote"><pre class="json"></pre></div>';
-    $modalBody.querySelector('pre').textContent = jsonText({
-      rail: (row.extra && row.extra.symbol) || ALLOWED_RAILS[row.asset].symbol,
-      amount: formatAmount(row),
-      asset: row.asset,
-      network: row.network,
-      payTo: row.payTo,
-      feePayer: row.extra && row.extra.feePayer,
-      payer: wallet.address,
-      method: wallet.method,
-      envelope: built.envelope
-    });
-    $modalActions.innerHTML =
-      '<button type="button" id="modal-sign">SIGN WITH ' + String(wallet.method).toUpperCase() + '</button>' +
-      '<button type="button" id="modal-cancel">CANCEL</button>';
-    document.getElementById('modal-cancel').onclick = closeModal;
-    document.getElementById('modal-sign').onclick = function () {
-      $modalLead.textContent = 'Waiting for the shell to sign. Phantom/Solflare use signTransaction only — never signAndSendTransaction.';
-      requestSignTransaction(built.transaction).then(function (signedTxB64) {
-        closeModal();
-        resume(encodePayment(built.envelope, signedTxB64));
-      }).catch(function (err) {
-        $modalLead.textContent = err.message || String(err);
+  if (rest.trim()) parts.push(rest);
+  return parts;
+}
+
+function bindCorpus(text, existingId) {
+  var parts = splitCorpus(text);
+  var contextId = existingId || null;
+  var chain = Promise.resolve();
+  parts.forEach(function (part) {
+    chain = chain.then(function () {
+      var body = { corpus: part };
+      if (contextId) body.context_id = contextId;
+      return api('/v1/hrr/bind', { method: 'POST', body: body }).then(function (out) {
+        if (!out.res.ok || !out.data || !out.data.context_id) {
+          throw new Error('Could not use those files');
+        }
+        contextId = out.data.context_id;
       });
-    };
-  }).catch(function (err) {
-    $modalLead.textContent = err.message || String(err);
-    $modalBody.textContent = '';
-    $modalActions.innerHTML = '<button type="button" id="modal-cancel">CLOSE</button>';
-    document.getElementById('modal-cancel').onclick = closeModal;
+    });
+  });
+  return chain.then(function () { return contextId; });
+}
+
+function extOf(name) {
+  var i = String(name || '').lastIndexOf('.');
+  return i >= 0 ? String(name).slice(i).toLowerCase() : '';
+}
+
+function isTextFile(file) {
+  if (!file) return false;
+  if (file.type && file.type.indexOf('text/') === 0) return true;
+  if (file.type === 'application/json') return true;
+  return !!TEXT_EXTS[extOf(file.name)];
+}
+
+function readFileText(file) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () { resolve(String(reader.result || '')); };
+    reader.onerror = function () { reject(new Error('Could not read ' + (file.name || 'file'))); };
+    reader.readAsText(file);
   });
 }
 
-function chatHeaders(payment) {
-  var headers = {};
-  if (document.getElementById('attach-context').checked && contextId) {
-    headers['X-HRR-Context'] = contextId;
+function readFileDataUrl(file) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function () { resolve(String(reader.result || '')); };
+    reader.onerror = function () { reject(new Error('Could not read photo')); };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderChips() {
+  $chips.innerHTML = '';
+  pendingFiles.forEach(function (item, idx) {
+    var el = document.createElement('div');
+    el.className = 'achip' + (item.kind === 'image' ? ' aimg' : '');
+    if (item.kind === 'image' && item.dataUrl) {
+      el.innerHTML = '<img alt=""><span class="ax">×</span>';
+      el.querySelector('img').src = item.dataUrl;
+    } else {
+      el.innerHTML = '<span></span><span class="ax">×</span>';
+      el.querySelector('span').textContent = item.name;
+    }
+    el.querySelector('.ax').onclick = function () {
+      pendingFiles.splice(idx, 1);
+      renderChips();
+    };
+    $chips.appendChild(el);
+  });
+}
+
+function addPendingFiles(fileList) {
+  var files = Array.prototype.slice.call(fileList || []);
+  var jobs = files.map(function (file) {
+    if (file.type && file.type.indexOf('image/') === 0) {
+      return readFileDataUrl(file).then(function (dataUrl) {
+        pendingFiles.push({ kind: 'image', name: file.name || 'photo', dataUrl: dataUrl });
+      });
+    }
+    if (isTextFile(file) || !file.type) {
+      return readFileText(file).then(function (text) {
+        pendingFiles.push({
+          kind: 'text',
+          name: file.name || 'note',
+          text: '===== ' + (file.name || 'note') + ' =====\n' + text
+        });
+      });
+    }
+    pendingFiles.push({ kind: 'file', name: file.name || 'file' });
+    return Promise.resolve();
+  });
+  return Promise.all(jobs).then(renderChips);
+}
+
+function consumeAttachments(thread) {
+  if (!pendingFiles.length) return Promise.resolve();
+  var texts = pendingFiles.filter(function (f) { return f.kind === 'text' && f.text; });
+  var names = pendingFiles.map(function (f) { return f.name; });
+  var corpus = texts.map(function (f) { return f.text; }).join('\n\n');
+  var images = pendingFiles.filter(function (f) { return f.kind === 'image'; });
+  thread.pendingImages = images.map(function (f) { return f.dataUrl; });
+  pendingFiles = [];
+  renderChips();
+  if (!corpus.trim()) {
+    thread.usingLabel = names.length ? ('Using ' + names.length + (names.length === 1 ? ' file' : ' files')) : '';
+    saveThreads();
+    renderHeader();
+    return Promise.resolve();
   }
+  return bindCorpus(corpus, thread.contextId).then(function (id) {
+    thread.contextId = id;
+    thread.usingLabel = 'Using ' + names.length + (names.length === 1 ? ' file' : ' files');
+    saveThreads();
+    renderHeader();
+  });
+}
+
+function renderHeader() {
+  var t = activeThread();
+  document.getElementById('header-name').textContent = t.name;
+  document.getElementById('header-sub').textContent = t.usingLabel || (wallet.address
+    ? (wallet.address.slice(0, 4) + '…' + wallet.address.slice(-4))
+    : 'openzoo');
+  var av = document.getElementById('header-avatar');
+  av.textContent = initials(t.name);
+  av.style.background = avatarColor(t.id);
+  if (t.model) $model.value = t.model;
+}
+
+function renderSidebar() {
+  var q = document.getElementById('search').value.trim().toLowerCase();
+  $threads.innerHTML = '';
+  threads.forEach(function (t) {
+    if (q && (t.name + ' ' + previewOf(t)).toLowerCase().indexOf(q) === -1) return;
+    var row = document.createElement('div');
+    row.className = 'trow' + (t.id === activeId ? ' active' : '');
+    row.innerHTML = '<div class="tavatar"></div><div class="tmeta"><div class="tname"></div><div class="tprev"></div></div><button class="tclose" type="button">×</button>';
+    var av = row.querySelector('.tavatar');
+    av.textContent = initials(t.name);
+    av.style.background = avatarColor(t.id);
+    row.querySelector('.tname').textContent = t.name;
+    row.querySelector('.tprev').textContent = previewOf(t);
+    row.onclick = function (ev) {
+      if (ev.target.classList.contains('tclose')) return;
+      activeId = t.id;
+      closeSidebar();
+      renderSidebar();
+      renderLog();
+      renderHeader();
+    };
+    row.querySelector('.tclose').onclick = function (ev) {
+      ev.stopPropagation();
+      threads = threads.filter(function (x) { return x.id !== t.id; });
+      if (!threads.length) threads.push(blankThread());
+      if (activeId === t.id) activeId = threads[0].id;
+      saveThreads();
+      renderSidebar();
+      renderLog();
+      renderHeader();
+    };
+    $threads.appendChild(row);
+  });
+}
+
+function addBubble(role, text, extra) {
+  extra = extra || {};
+  var row = document.createElement('div');
+  row.className = 'row ' + (role === 'user' ? 'user' : 'bot') + (extra.pending ? ' pending' : '') + (extra.err ? ' err' : '');
+  var bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  if (extra.images && extra.images.length) {
+    var imgs = document.createElement('div');
+    imgs.className = 'bubble-images';
+    extra.images.forEach(function (src) {
+      var img = document.createElement('img');
+      img.src = src;
+      imgs.appendChild(img);
+    });
+    bubble.appendChild(imgs);
+  }
+  var txt = document.createElement('div');
+  txt.textContent = text;
+  bubble.appendChild(txt);
+  row.appendChild(bubble);
+  $log.appendChild(row);
+  $log.scrollTop = $log.scrollHeight;
+  return { row: row, text: txt };
+}
+
+function renderLog() {
+  $log.innerHTML = '';
+  var t = activeThread();
+  if (!t.messages.length) {
+    addBubble('assistant', 'Welcome to the zoo. Attach files or photos if you want this chat to use them — then just talk.');
+  }
+  t.messages.forEach(function (m) {
+    if (m.role !== 'user' && m.role !== 'assistant') return;
+    addBubble(m.role, m.content, { images: m.images, err: m.err });
+  });
+}
+
+function openSidebar() {
+  $sidebar.classList.add('open');
+  $scrim.classList.add('show');
+}
+function closeSidebar() {
+  $sidebar.classList.remove('open');
+  $scrim.classList.remove('show');
+}
+
+function loadModels() {
+  return api('/v1/models').then(function (out) {
+    var rows = (out.data && out.data.data) || [];
+    var ids = rows.map(function (m) { return m.id; }).filter(function (id) {
+      return id && id.indexOf('~') !== 0 && id.indexOf(':batch') === -1;
+    });
+    if (ids.indexOf(DEFAULT_MODEL) === -1) ids.unshift(DEFAULT_MODEL);
+    $model.innerHTML = '';
+    var seen = {};
+    ids.forEach(function (id) {
+      if (seen[id]) return;
+      seen[id] = true;
+      var opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = id;
+      if (id === (activeThread().model || DEFAULT_MODEL)) opt.selected = true;
+      $model.appendChild(opt);
+    });
+  }).catch(function () {
+    $model.innerHTML = '';
+    var opt = document.createElement('option');
+    opt.value = DEFAULT_MODEL;
+    opt.textContent = DEFAULT_MODEL;
+    $model.appendChild(opt);
+  });
+}
+
+function chatHeaders(thread, payment) {
+  var headers = {};
+  if (thread.contextId) headers['X-HRR-Context'] = thread.contextId;
   if (payment) headers['X-PAYMENT'] = payment;
   return headers;
 }
 
-function sendChat(userText, payment) {
-  if (!payment) {
-    messages.push({ role: 'user', content: userText });
-    addBubble('you', userText);
+function payForAccept(row) {
+  if (!wallet.address) throw new Error('Connect a wallet in the shell first.');
+  return api('/v1/pay/build', {
+    method: 'POST',
+    body: { accept: row, payer: wallet.address }
+  }).then(function (out) {
+    if (!out.res.ok) {
+      throw new Error(typeof out.data === 'string' ? out.data : 'Could not build payment');
+    }
+    return requestSignTransaction(out.data.transaction).then(function (signed) {
+      return encodePayment(out.data.envelope, signed);
+    });
+  });
+}
+
+function topUpAndRetry(row, plan) {
+  var need = plan.need - plan.twinHeld;
+  if (need < 1n) need = 1n;
+  return Promise.all([
+    OpenZooSolana.getTokenAccountBalance(plan.source.acquire.escrow),
+    OpenZooSolana.getTokenSupply(plan.mint),
+    OpenZooSolana.getAccountInfo(plan.mint),
+    OpenZooSolana.getBalanceLamports(wallet.address)
+  ]).then(function (parts) {
+    var deposit = OpenZooWrap.depositForShares(need, parts[0], parts[1]);
+    if (plan.underHeld < deposit) {
+      throw new Error('This wallet needs a top-up from ' + plan.source.underlyingSymbol + ' before that message can send.');
+    }
+    if (parts[3] < 5000) {
+      throw new Error('This wallet needs a little SOL for the network fee.');
+    }
+    var wrappedProgram = OpenZooWrap.mintOwnerProgram(parts[2]);
+    return OpenZooWrap.buildUnsignedWrapTx({
+      source: plan.source,
+      owner: wallet.address,
+      depositRaw: deposit,
+      wrappedProgram: wrappedProgram
+    });
+  }).then(function (built) {
+    return requestSignAndSend(built.transaction);
+  }).then(function (signature) {
+    return OpenZooSolana.confirmSignature(signature);
+  }).then(function () {
+    return payForAccept(row);
+  });
+}
+
+function settle402(accepts) {
+  return ensureDirectory().then(function (parsed) {
+    var live = OpenZooRails.liveAccepts(accepts, parsed);
+    var deprecated = OpenZooRails.deprecatedAccepts(accepts);
+    if (!live.length) {
+      if (deprecated.length) {
+        throw new Error('That payment option is no longer available. Try again in a moment.');
+      }
+      throw new Error('No payment option is available right now.');
+    }
+    if (!wallet.address) throw new Error('Connect a wallet in the shell first.');
+    return OpenZooSolana.getParsedTokenAccounts(wallet.address).then(function (accounts) {
+      var holdings = OpenZooWrap.holdingsMap(accounts);
+      var covered = [];
+      var wrappable = [];
+      live.forEach(function (row) {
+        var plan = OpenZooWrap.resolveWrapPlan(parsed, row, accounts);
+        var twin = holdings[OpenZooRails.acceptAsset(row)];
+        var need = BigInt(row.maxAmountRequired || '0');
+        if (twin && twin.raw >= need) covered.push({ row: row, plan: plan });
+        else if (plan && plan.canWrap) wrappable.push({ row: row, plan: plan });
+      });
+      if (covered.length) {
+        return payForAccept(covered[0].row).catch(function (err) {
+          if (!wrappable.length) throw err;
+          return runTopup(parsed, live, accounts, wrappable);
+        });
+      }
+      return runTopup(parsed, live, accounts, wrappable);
+    });
+  });
+}
+
+function runTopup(parsed, live, accounts, wrappable) {
+  var ez = OpenZooWrap.chooseEzTopup(parsed, live, accounts);
+  if (!ez.length) {
+    throw new Error('This wallet needs a top-up before that message can send.');
   }
+  var pick = Promise.resolve(ez[0]);
+  if (ez.length > 1) {
+    pick = askChoice(
+      'Add funds to keep chatting',
+      'Use the largest balance in this wallet, or pick one.',
+      ez.map(function (item) {
+        return {
+          label: item.symbol,
+          action: 'Top up with ' + item.symbol,
+          value: item
+        };
+      })
+    );
+  }
+  return pick.then(function (choice) {
+    if (!choice) throw new Error('Top-up cancelled');
+    var match = wrappable.filter(function (w) { return w.plan && w.plan.source && w.plan.source.underlying === choice.source.underlying; })[0]
+      || wrappable.filter(function (w) { return w.row.asset === choice.mint; })[0];
+    if (!match) match = { row: live[0], plan: OpenZooWrap.resolveWrapPlan(parsed, live[0], accounts) };
+    openModal('Top up', 'Approve in your wallet. This only adds what this chat needs.');
+    $modalBody.textContent = '';
+    $modalActions.innerHTML = '';
+    return topUpAndRetry(match.row, match.plan).then(function (payment) {
+      closeModal();
+      return payment;
+    });
+  });
+}
+
+function sendChat(userText, payment) {
+  var thread = activeThread();
+  var images = thread.pendingImages || [];
+  thread.pendingImages = null;
+  if (!payment) {
+    thread.messages.push({ role: 'user', content: userText, images: images });
+    if (thread.name === 'New chat') thread.name = userText.slice(0, 32);
+    thread.updatedAt = Date.now();
+    saveThreads();
+    renderSidebar();
+    renderHeader();
+    addBubble('user', userText, { images: images });
+  }
+  var thinking = addBubble('assistant', '…', { pending: true });
   var body = {
-    model: $model.value || DEFAULT_MODEL,
-    messages: messages
+    model: $model.value || thread.model || DEFAULT_MODEL,
+    messages: [{
+      role: 'system',
+      content: 'You are OpenZoo. Be useful and concise. The user may have attached files for this chat; use that material when it helps. Do not mention payment rails, bind endpoints, or context ids.'
+    }].concat(thread.messages.filter(function (m) {
+      return m.role === 'user' || m.role === 'assistant';
+    }).map(function (m) {
+      return { role: m.role, content: m.content };
+    }))
   };
   return api('/v1/chat/completions', {
     method: 'POST',
-    headers: chatHeaders(payment),
+    headers: chatHeaders(thread, payment),
     body: body
   }).then(function (out) {
     if (out.res.status === 402) {
-      addBubble('gateway', '402 — pick a Solana rail you can fund.');
-      showRailPicker((out.data && out.data.accepts) || [], function (xPayment) {
-        sendChat(userText, xPayment);
+      thinking.text.textContent = 'Working on it…';
+      return settle402((out.data && out.data.accepts) || []).then(function (xPayment) {
+        thinking.row.remove();
+        return sendChat(userText, xPayment);
+      }).catch(function (err) {
+        thinking.row.classList.add('err');
+        thinking.text.textContent = userFacingPayError(err);
       });
-      return;
     }
     if (isContextMissing(out.data, out.res.status)) {
-      addBubble('gateway', 'context_not_found. Re-bind a corpus on the Bind tab. This is free — nothing was charged.', 'err');
+      thread.contextId = null;
+      saveThreads();
+      thinking.row.classList.add('err');
+      thinking.text.textContent = 'Those files need to be attached again.';
       return;
     }
     if (!out.res.ok) {
-      addBubble('gateway', typeof out.data === 'string' ? out.data : jsonText(out.data), 'err');
+      thinking.row.classList.add('err');
+      thinking.text.textContent = typeof out.data === 'string' ? out.data : 'The zoo hiccuped.';
       return;
     }
     var choice = out.data && out.data.choices && out.data.choices[0];
     var reply = choice && choice.message && choice.message.content;
-    if (!reply) reply = jsonText(out.data);
-    messages.push({ role: 'assistant', content: reply });
-    addBubble('openzoo', reply);
+    if (!reply) reply = 'The zoo returned something unusual.';
+    thinking.row.classList.remove('pending');
+    thinking.text.textContent = reply;
+    thread.messages.push({ role: 'assistant', content: reply });
+    thread.updatedAt = Date.now();
+    saveThreads();
+    renderSidebar();
   }).catch(function (err) {
-    addBubble('gateway', err.message || String(err), 'err');
+    thinking.row.classList.add('err');
+    thinking.text.textContent = userFacingPayError(err);
   });
 }
 
-document.querySelectorAll('.tab').forEach(function (btn) {
-  btn.addEventListener('click', function () {
-    document.querySelectorAll('.tab').forEach(function (b) { b.classList.remove('on'); });
-    btn.classList.add('on');
-    ['chat', 'bind', 'stats'].forEach(function (name) {
-      document.getElementById('panel-' + name).classList.toggle('hidden', btn.getAttribute('data-tab') !== name);
-    });
-    if (btn.getAttribute('data-tab') === 'stats') refreshStats();
+function submit() {
+  var text = $inp.value.trim();
+  if ((!text && !pendingFiles.length) || busy) return;
+  busy = true;
+  document.getElementById('send').disabled = true;
+  var thread = activeThread();
+  consumeAttachments(thread).then(function () {
+    if (!text) text = thread.usingLabel ? 'Use what I just attached.' : '';
+    if (!text) return;
+    $inp.value = '';
+    $inp.style.height = 'auto';
+    return sendChat(text);
+  }).catch(function (err) {
+    addBubble('assistant', userFacingPayError(err), { err: true });
+  }).then(function () {
+    busy = false;
+    document.getElementById('send').disabled = false;
+  });
+}
+
+function showWallet() {
+  document.getElementById('walletOverlay').classList.add('show');
+  var body = document.getElementById('wallet-body');
+  if (!wallet.address) {
+    body.innerHTML = '<p class="wsub">No wallet connected. Close this and use the shell.</p>';
+    return;
+  }
+  body.innerHTML = '<div class="waddr"></div>';
+  body.querySelector('.waddr').textContent = wallet.address + ' · ' + wallet.method;
+}
+
+document.getElementById('menu-btn').onclick = openSidebar;
+document.getElementById('close-sidebar').onclick = closeSidebar;
+$scrim.onclick = closeSidebar;
+document.getElementById('new-thread').onclick = function () {
+  var t = blankThread();
+  threads.unshift(t);
+  activeId = t.id;
+  saveThreads();
+  closeSidebar();
+  renderSidebar();
+  renderLog();
+  renderHeader();
+};
+document.getElementById('search').addEventListener('input', renderSidebar);
+document.getElementById('plus-btn').onclick = function () {
+  $plusMenu.classList.toggle('show');
+};
+document.getElementById('attach-files').onclick = function () {
+  $plusMenu.classList.remove('show');
+  document.getElementById('file-inp').click();
+};
+document.getElementById('attach-photos').onclick = function () {
+  $plusMenu.classList.remove('show');
+  document.getElementById('photo-inp').click();
+};
+document.getElementById('attach-folder').onclick = function () {
+  $plusMenu.classList.remove('show');
+  document.getElementById('folder-inp').click();
+};
+document.getElementById('attach-paste').onclick = function () {
+  $plusMenu.classList.remove('show');
+  var pasted = window.prompt('Paste the text this chat should use');
+  if (!pasted || !pasted.trim()) return;
+  pendingFiles.push({ kind: 'text', name: 'pasted note', text: pasted });
+  renderChips();
+};
+['file-inp', 'photo-inp', 'folder-inp'].forEach(function (id) {
+  document.getElementById(id).addEventListener('change', function (ev) {
+    addPendingFiles(ev.target.files);
+    ev.target.value = '';
   });
 });
-
-document.getElementById('exit-btn').addEventListener('click', function () {
+document.getElementById('send').onclick = submit;
+$inp.addEventListener('keydown', function (ev) {
+  if (ev.key === 'Enter' && !ev.shiftKey) {
+    ev.preventDefault();
+    submit();
+  }
+});
+$inp.addEventListener('input', function () {
+  $inp.style.height = 'auto';
+  $inp.style.height = Math.min($inp.scrollHeight, 120) + 'px';
+});
+$model.addEventListener('change', function () {
+  activeThread().model = $model.value;
+  saveThreads();
+});
+document.getElementById('wallet-btn').onclick = showWallet;
+document.getElementById('wallet-close').onclick = function () {
+  document.getElementById('walletOverlay').classList.remove('show');
+};
+document.getElementById('exit-btn').onclick = function () {
   window.parent.postMessage({ type: 'wallet-disconnect' }, '*');
-});
-
-document.getElementById('chat-form').addEventListener('submit', function (ev) {
-  ev.preventDefault();
-  var text = $chatInput.value.trim();
-  if (!text) return;
-  $chatInput.value = '';
-  sendChat(text);
-});
-
-document.getElementById('bind-btn').addEventListener('click', bindCorpus);
-document.getElementById('stats-btn').addEventListener('click', refreshStats);
-document.getElementById('corpus-file').addEventListener('change', function (ev) {
-  var file = ev.target.files && ev.target.files[0];
-  if (!file) return;
-  var reader = new FileReader();
-  reader.onload = function () {
-    document.getElementById('corpus').value = String(reader.result || '');
-  };
-  reader.readAsText(file);
-});
+};
 
 window.addEventListener('message', function (event) {
   if (event.source !== window.parent) return;
@@ -357,22 +749,25 @@ window.addEventListener('message', function (event) {
   if (data.type === 'wallet-connected') {
     wallet.address = data.address;
     wallet.method = data.method;
-    setWalletLabel();
+    renderHeader();
   }
   if (data.type === 'wallet-disconnected') {
     wallet.address = null;
     wallet.method = null;
-    setWalletLabel();
+    renderHeader();
   }
-  if (data.type === 'wallet-sign-transaction-response' && data.id && pendingSign[data.id]) {
+  if ((data.type === 'wallet-sign-transaction-response' || data.type === 'wallet-sign-and-send-transaction-response') && data.id && pendingSign[data.id]) {
     var waiter = pendingSign[data.id];
     delete pendingSign[data.id];
     if (data.error) waiter.reject(new Error(data.error));
-    else waiter.resolve(data.signedTransaction);
+    else waiter.resolve(data.signedTransaction || data.signature);
   }
 });
 
 window.parent.postMessage({ type: 'wallet-request-info' }, '*');
-setWalletLabel();
+loadThreads();
+renderSidebar();
+renderLog();
+renderHeader();
 loadModels();
-refreshStats();
+ensureDirectory().catch(function () {});

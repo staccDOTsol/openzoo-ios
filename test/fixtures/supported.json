@@ -1,0 +1,122 @@
+{
+  "kinds": [
+    {
+      "x402Version": 1,
+      "scheme": "exact",
+      "network": "eip155:8453",
+      "extra": {
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "symbol": "USDC",
+        "decimals": 6
+      }
+    },
+    {
+      "x402Version": 1,
+      "scheme": "exact",
+      "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "extra": {
+        "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "symbol": "USDC",
+        "decimals": 6,
+        "yieldBearing": false
+      }
+    },
+    {
+      "x402Version": 1,
+      "scheme": "exact",
+      "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "extra": {
+        "asset": "6ZjjxcoicqM4nniddkuPVwew4PDwY3swbfHsGbCuLuTv",
+        "symbol": "yUSDCx",
+        "decimals": 6,
+        "yieldBearing": true,
+        "acquire": {
+          "method": "spl-token-wrap",
+          "program": "FrSERTNCPvTtaDS9AvQp9u1nYGzXDb3kC9MdL8Xxn2NE",
+          "underlying": {
+            "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "symbol": "USDC",
+            "decimals": 6,
+            "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          },
+          "escrow": "2qLm8aCvn6gQVUFeQ7EC5J62Y95gFzc3vReHzD5d5Gj2",
+          "mintAuthority": "EBGYMEEEPKu7szPUbnbp2h63azY9Sj9GR4MA2Ms6Quoi"
+        }
+      }
+    },
+    {
+      "x402Version": 1,
+      "scheme": "exact",
+      "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "extra": {
+        "asset": "FXYkwMtfKpA174rp8ixVeiGs5TYGaBsYRrHE3KrR449B",
+        "symbol": "wTOKENx2",
+        "decimals": 6,
+        "yieldBearing": true,
+        "acquire": {
+          "method": "spl-token-wrap",
+          "program": "FrSERTNCPvTtaDS9AvQp9u1nYGzXDb3kC9MdL8Xxn2NE",
+          "underlying": {
+            "address": "EVULoNF4DeMBN4dGiZiDfpiiTfNZgoCvXWWgaV3epump",
+            "symbol": "TOKEN",
+            "decimals": 6,
+            "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+          },
+          "escrow": "2ZFYUDiYbtJ8czCPnd6Wjbeo1Yg1LLJ9JkGPMeuZkKyh",
+          "mintAuthority": "2SFdjJoRyWfXvXghAjahDgmaZPrAr5WqqCr8KquAtZVM",
+          "authorityBump": 254,
+          "steps": [
+            {
+              "program": "FrSERTNCPvTtaDS9AvQp9u1nYGzXDb3kC9MdL8Xxn2NE",
+              "instruction": "Wrap",
+              "note": "tag 1, u64 amount LE, bump 254. NINE accounts."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "x402Version": 1,
+      "scheme": "exact",
+      "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "extra": {
+        "asset": "3FViQRMqtG6dUDFxZyyVvpM9xTHsKdX7uqZ5jvL8NZ35",
+        "symbol": "wLEOSx",
+        "decimals": 9,
+        "yieldBearing": true,
+        "acquire": {
+          "method": "spl-token-wrap",
+          "program": "FrSERTNCPvTtaDS9AvQp9u1nYGzXDb3kC9MdL8Xxn2NE",
+          "underlying": {
+            "address": "5xgsnby6P9zqGK71J7H4yJLxzqPvNbC7rDZxNzjHmj7e",
+            "symbol": "LEOS",
+            "decimals": 9,
+            "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          },
+          "escrow": "62kjFPGb2RnPXfShFdeYuvyN72hg5EC4N8UVkuN1RiMc",
+          "mintAuthority": "3Fj3FCty8DJZTrEdW5dYLgEfbVNATDixj9gVWWxuvz8J",
+          "authorityBump": 255
+        }
+      }
+    },
+    {
+      "x402Version": 1,
+      "scheme": "exact",
+      "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "extra": {
+        "asset": "Bo7xBF7SY8EyUBPUxRP66SFafxoPf2n5uqiLjbxEebx9",
+        "symbol": "wTOKENx",
+        "decimals": 6,
+        "yieldBearing": true,
+        "acquire": {
+          "method": "spl-token-wrap",
+          "underlying": {
+            "address": "EVULoNF4DeMBN4dGiZiDfpiiTfNZgoCvXWWgaV3epump",
+            "symbol": "TOKEN",
+            "decimals": 6
+          }
+        }
+      }
+    }
+  ]
+}
