@@ -24,7 +24,8 @@
       restore: true,
       entitlements: true,
       debugBuild: true,
-      debugUnlockStatus: true
+      debugUnlockStatus: true,
+      testFlight: true
     };
   }
 
@@ -98,7 +99,8 @@
   function hasAccess(sub, opts) {
     if (!sub) return false;
     if (sub.productId || sub.jws || sub.key) return true;
-    return !!(opts && opts.debug && sub.localUnlock);
+    if (!sub.localUnlock || !opts) return false;
+    return !!(opts.debug || opts.testFlight);
   }
 
   function applyLocalUnlock(sub) {
@@ -118,6 +120,7 @@
     debugBuild: function () { return call('debugBuild'); },
     debugUnlock: function (email) { return call('debugUnlock', email); },
     debugUnlockStatus: function () { return call('debugUnlockStatus'); },
+    testFlight: function () { return call('testFlight'); },
     loadSubscription: loadSubscription,
     saveSubscription: saveSubscription,
     clearSubscription: clearSubscription,

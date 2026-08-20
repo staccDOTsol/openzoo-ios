@@ -21,6 +21,9 @@ var OpenZooStore = {
     },
     debugUnlockStatus: function(success, error) {
         cordovaExec(success, error, 'OpenZooStore', 'debugUnlockStatus', []);
+    },
+    testFlight: function(success, error) {
+        cordovaExec(success, error, 'OpenZooStore', 'testFlight', []);
     }
 };
 

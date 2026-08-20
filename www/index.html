@@ -108,6 +108,7 @@
   var connectedMethod = null;
   var catalog = null;
   var debugBuild = false;
+  var testFlightBuild = false;
   var GAME_URL = 'app/index.html';
   var GAME_ORIGIN = '*';
 
@@ -156,7 +157,7 @@
       productId: sub.productId || null,
       key: sub.key || null,
       pending: !!sub.pending,
-      localUnlock: !!(debugBuild && sub.localUnlock),
+      localUnlock: !!((debugBuild || testFlightBuild) && sub.localUnlock),
       address: connectedAddress,
       method: connectedMethod
     }, GAME_ORIGIN);
@@ -272,7 +273,10 @@
     setStatus('Restoring App Store purchases…');
     return OpenZooIOSStore.restore().then(function (rows) {
       var list = Array.isArray(rows) ? rows : [];
-      if (!list.length) throw new Error('No App Store subscription to restore.');
+      if (!list.length) {
+        setStatus('No App Store subscription to restore.');
+        return;
+      }
       var receipt = list[0];
       return OpenZooBilling.exchangeAppStore({
         jws: receipt.jws,
@@ -282,7 +286,12 @@
         persistAndEnter(receipt, ex);
       });
     }).catch(function (err) {
-      setStatus(err.message || String(err));
+      var msg = err.message || String(err);
+      if (/cancel/i.test(msg)) {
+        setStatus('No App Store subscription to restore.');
+        return;
+      }
+      setStatus(msg);
     });
   }
 
@@ -471,7 +480,7 @@
 
   function maybeLaunchFromSaved() {
     var saved = currentSub();
-    if (!OpenZooIOSStore.hasAccess(saved, { debug: debugBuild })) return false;
+    if (!OpenZooIOSStore.hasAccess(saved, { debug: debugBuild, testFlight: testFlightBuild })) return false;
     if (saved.pending && saved.jws) {
       OpenZooBilling.exchangeAppStore(saved).then(function (ex) {
         if (ex.ok && ex.key) {
@@ -503,8 +512,17 @@
           persistLocalUnlockAndEnter();
           return;
         }
+        return OpenZooIOSStore.testFlight().then(function (tf) {
+          testFlightBuild = tf === true || tf === 'true' || tf === 1;
+          if (testFlightBuild) {
+            persistLocalUnlockAndEnter();
+            return;
+          }
+          maybeLaunchFromSaved();
+        });
+      }).catch(function () {
         maybeLaunchFromSaved();
-      }).catch(function () {});
+      });
       OpenZooIOSStore.entitlements().then(function (rows) {
         if ((!currentSub() || !currentSub().jws) && rows && rows[0]) {
           return OpenZooBilling.exchangeAppStore(rows[0]).then(function (ex) {

@@ -68,11 +68,14 @@ class OpenZooStore: CDVPlugin {
         Task {
             do {
                 try await AppStore.sync()
-                let rows = await self.currentEntitlements()
-                self.sendOk(command, rows)
             } catch {
-                self.sendErr(command, error.localizedDescription)
+                if !Self.isCancel(error) {
+                    self.sendErr(command, error.localizedDescription)
+                    return
+                }
             }
+            let rows = await self.currentEntitlements()
+            self.sendOk(command, rows)
         }
     }
 
@@ -117,6 +120,29 @@ class OpenZooStore: CDVPlugin {
 #else
         sendOk(command, ["unlocked": false] as [String: Any])
 #endif
+    }
+
+    @objc(testFlight:)
+    func testFlight(_ command: CDVInvokedUrlCommand) {
+#if DEBUG
+        sendOk(command, false)
+#else
+        let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+        sendOk(command, isTestFlight)
+#endif
+    }
+
+    private static func isCancel(_ error: Error) -> Bool {
+        if let storeKit = error as? StoreKitError {
+            if case .userCancelled = storeKit {
+                return true
+            }
+        }
+        if error is CancellationError {
+            return true
+        }
+        let text = error.localizedDescription.lowercased()
+        return text.contains("cancel")
     }
 
     private func currentEntitlements() async -> [[String: Any]] {

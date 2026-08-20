@@ -1,7 +1,7 @@
 {
   "name": "fun.openzoo.ios",
   "displayName": "OpenZoo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "OpenZoo iOS — App Store subscriptions first, grokui-style chat. StoreKit 2 IAP. No Stripe webview. No MWA.",
   "main": "index.js",
   "scripts": {
