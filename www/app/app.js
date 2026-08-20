@@ -55,6 +55,8 @@ function saveThreads() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(threads)); } catch (_) {}
 }
 
+var hud = OpenZooChatSpill.loadHud();
+
 function blankThread() {
   return {
     id: uid(),
@@ -62,6 +64,7 @@ function blankThread() {
     model: DEFAULT_MODEL,
     messages: [],
     contextId: null,
+    boundTurnCount: 0,
     usingLabel: '',
     createdAt: Date.now(),
     updatedAt: Date.now()
@@ -400,6 +403,72 @@ function consumeAttachments(thread) {
   });
 }
 
+function renderHud() {
+  var btn = document.getElementById('hud-btn');
+  var x = OpenZooChatSpill.hudSavingX(hud);
+  if (btn) btn.textContent = x == null ? '◎' : OpenZooChatSpill.formatSavingX(x);
+  var spent = document.getElementById('hud-spent');
+  var direct = document.getElementById('hud-direct');
+  var saved = document.getElementById('hud-saved');
+  var foot = document.getElementById('hud-foot');
+  if (!spent) return;
+  function usd(n) {
+    if (!n) return '$0';
+    if (n < 0.01) return '$' + n.toFixed(4);
+    return '$' + n.toFixed(2);
+  }
+  spent.textContent = usd(hud.spentUsd);
+  direct.textContent = usd(hud.directUsd);
+  if (x == null) {
+    saved.textContent = '—';
+    saved.className = '';
+  } else {
+    saved.textContent = OpenZooChatSpill.formatSavingX(x);
+    saved.className = x >= 1 ? 'hlime' : 'hember';
+  }
+  if (foot) foot.textContent = (hud.paidCalls || 0) + ' paid calls this session';
+}
+
+function noteChatReceipt(data, accepts) {
+  var rec = OpenZooChatSpill.extractX402(data, accepts);
+  if (!rec) return;
+  OpenZooChatSpill.noteHudReceipt(hud, rec);
+  OpenZooChatSpill.saveHud(hud);
+  renderHud();
+}
+
+function rememberThreadContext(thread, out) {
+  var id = OpenZooChatSpill.captureContextId(out);
+  if (!id) return;
+  if (thread.contextId !== id) {
+    thread.contextId = id;
+    saveThreads();
+  }
+}
+
+function bindChatPrefix(thread, split) {
+  if (!split || !split.shouldBind || !split.prefix.length) {
+    return Promise.resolve(thread.contextId);
+  }
+  var already = thread.boundTurnCount || 0;
+  var delta = split.prefix.slice(already);
+  if (!delta.length) return Promise.resolve(thread.contextId);
+  var corpus = OpenZooChatSpill.prefixCorpus(delta);
+  if (!corpus.trim()) {
+    thread.boundTurnCount = split.prefix.length;
+    saveThreads();
+    return Promise.resolve(thread.contextId);
+  }
+  return bindCorpus(corpus, thread.contextId).then(function (id) {
+    thread.contextId = id;
+    thread.boundTurnCount = split.prefix.length;
+    saveThreads();
+    return id;
+  }).catch(function () {
+    return thread.contextId;
+  });
+}
+
 function renderHeader() {
   var t = activeThread();
   document.getElementById('header-name').textContent = t.name;
@@ -412,6 +481,7 @@ function renderHeader() {
   av.textContent = initials(t.name);
   av.style.background = avatarColor(t.id);
   if (t.model) $model.value = t.model;
+  renderHud();
 }
 
 function renderSidebar() {
@@ -522,9 +592,11 @@ function loadModels() {
   });
 }
 
-function chatHeaders(thread, payment) {
+function chatHeaders(req, payment) {
   var headers = {};
-  if (thread.contextId) headers['X-HRR-Context'] = thread.contextId;
+  if (req && req.mode === 'tail' && req.headers && req.headers['X-HRR-Context']) {
+    headers['X-HRR-Context'] = req.headers['X-HRR-Context'];
+  }
   if (payment) headers['X-PAYMENT'] = payment;
   return headers;
 }
@@ -696,11 +768,13 @@ function runTopup(parsed, live, accounts, wrappable) {
   });
 }
 
-function sendChat(userText, payment) {
+function sendChat(userText, payment, opts) {
+  opts = opts || {};
   var thread = activeThread();
   var images = thread.pendingImages || [];
   thread.pendingImages = null;
-  if (!payment) {
+  var replay = !!payment || !!opts.retry;
+  if (!replay) {
     thread.messages.push({ role: 'user', content: userText, images: images });
     if (thread.name === 'New chat') thread.name = userText.slice(0, 32);
     thread.updatedAt = Date.now();
@@ -710,78 +784,86 @@ function sendChat(userText, payment) {
     addBubble('user', userText, { images: images });
   }
   var thinking = addBubble('assistant', '…', { pending: true });
-  var body = {
-    model: $model.value || thread.model || DEFAULT_MODEL,
-    messages: [{
-      role: 'system',
-      content: 'You are OpenZoo. Be useful and concise. The user may have attached files for this chat; use that material when it helps. Do not mention payment rails, bind endpoints, or context ids.'
-    }].concat(thread.messages.filter(function (m) {
-      return m.role === 'user' || m.role === 'assistant';
-    }).map(function (m) {
-      return { role: m.role, content: m.content };
-    }))
-  };
-  return api('/v1/chat/completions', {
-    method: 'POST',
-    headers: chatHeaders(thread, payment),
-    body: body
-  }).then(function (out) {
-    if (out.res.status === 402) {
-      OpenZooPay402.persist({
-        threadId: thread.id,
-        userText: userText,
-        accepts: (out.data && out.data.accepts) || [],
-        at: Date.now()
-      });
-      if (wallet.address) {
-        thinking.text.textContent = 'Working on it…';
-        return settle402((out.data && out.data.accepts) || []).then(function (xPayment) {
-          thinking.row.remove();
-          return sendChat(userText, xPayment);
-        }).catch(function (err) {
-          mark402TerminalUnlessRetryable(err);
-          thinking.row.classList.add('err');
-          thinking.text.textContent = userFacingPayError(err);
+  var turns = OpenZooChatSpill.conversationTurns(thread.messages);
+  var split = OpenZooChatSpill.splitPrefixTail(turns);
+  return bindChatPrefix(thread, split).then(function () {
+    var req = OpenZooChatSpill.buildChatRequest({
+      model: $model.value || thread.model || DEFAULT_MODEL,
+      system: OpenZooChatSpill.SYSTEM,
+      turns: turns,
+      contextId: opts.forceFull ? null : thread.contextId
+    });
+    return api('/v1/chat/completions', {
+      method: 'POST',
+      headers: chatHeaders(req, payment),
+      body: req.body
+    }).then(function (out) {
+      if (out.res.status === 402) {
+        OpenZooPay402.persist({
+          threadId: thread.id,
+          userText: userText,
+          accepts: (out.data && out.data.accepts) || [],
+          at: Date.now()
         });
-      }
-      if (subscription.localUnlock) {
+        if (wallet.address) {
+          thinking.text.textContent = 'Working on it…';
+          return settle402((out.data && out.data.accepts) || []).then(function (xPayment) {
+            thinking.row.remove();
+            return sendChat(userText, xPayment, { forceFull: opts.forceFull });
+          }).catch(function (err) {
+            mark402TerminalUnlessRetryable(err);
+            thinking.row.classList.add('err');
+            thinking.text.textContent = userFacingPayError(err);
+          });
+        }
+        if (subscription.localUnlock) {
+          thinking.row.classList.add('err');
+          thinking.text.textContent = 'This session is unlocked locally. The zoo still asked for a subscription key.';
+          return;
+        }
+        if (subscription.key || subscription.pending) {
+          thinking.row.classList.add('err');
+          thinking.text.textContent = subscription.pending
+            ? 'Your App Store purchase is saved. The zoo still needs to mint the subscription key.'
+            : 'This chat is on a subscription key. The zoo asked for a per-call payment anyway — we did not open a wallet.';
+          return;
+        }
         thinking.row.classList.add('err');
-        thinking.text.textContent = 'This session is unlocked locally. The zoo still asked for a subscription key.';
+        thinking.text.textContent = 'A subscription is required. Open Plan to subscribe on the App Store.';
         return;
       }
-      if (subscription.key || subscription.pending) {
+      if (isContextMissing(out.data, out.res.status)) {
+        thread.contextId = null;
+        thread.boundTurnCount = 0;
+        saveThreads();
+        if (!opts.retry) {
+          thinking.row.remove();
+          return sendChat(userText, payment, { retry: true, forceFull: true });
+        }
         thinking.row.classList.add('err');
-        thinking.text.textContent = subscription.pending
-          ? 'Your App Store purchase is saved. The zoo still needs to mint the subscription key.'
-          : 'This chat is on a subscription key. The zoo asked for a per-call payment anyway — we did not open a wallet.';
+        thinking.text.textContent = thread.usingLabel
+          ? 'Those files need to be attached again.'
+          : 'This chat lost its bound history. Try that message again.';
         return;
       }
-      thinking.row.classList.add('err');
-      thinking.text.textContent = 'A subscription is required. Open Plan to subscribe on the App Store.';
-      return;
-    }
-    if (isContextMissing(out.data, out.res.status)) {
-      thread.contextId = null;
+      if (!out.res.ok) {
+        thinking.row.classList.add('err');
+        thinking.text.textContent = typeof out.data === 'string' ? out.data : 'The zoo hiccuped.';
+        return;
+      }
+      rememberThreadContext(thread, out);
+      noteChatReceipt(out.data);
+      var choice = out.data && out.data.choices && out.data.choices[0];
+      var reply = choice && choice.message && choice.message.content;
+      if (!reply) reply = 'The zoo returned something unusual.';
+      thinking.row.classList.remove('pending');
+      thinking.text.textContent = reply;
+      thread.messages.push({ role: 'assistant', content: reply });
+      thread.updatedAt = Date.now();
       saveThreads();
-      thinking.row.classList.add('err');
-      thinking.text.textContent = 'Those files need to be attached again.';
-      return;
-    }
-    if (!out.res.ok) {
-      thinking.row.classList.add('err');
-      thinking.text.textContent = typeof out.data === 'string' ? out.data : 'The zoo hiccuped.';
-      return;
-    }
-    var choice = out.data && out.data.choices && out.data.choices[0];
-    var reply = choice && choice.message && choice.message.content;
-    if (!reply) reply = 'The zoo returned something unusual.';
-    thinking.row.classList.remove('pending');
-    thinking.text.textContent = reply;
-    thread.messages.push({ role: 'assistant', content: reply });
-    thread.updatedAt = Date.now();
-    saveThreads();
-    renderSidebar();
-    OpenZooPay402.clear();
+      renderSidebar();
+      OpenZooPay402.clear();
+    });
   }).catch(function (err) {
     mark402TerminalUnlessRetryable(err);
     thinking.row.classList.add('err');
@@ -929,6 +1011,19 @@ $model.addEventListener('change', function () {
   activeThread().model = $model.value;
   saveThreads();
 });
+document.getElementById('hud-btn').onclick = function (ev) {
+  ev.stopPropagation();
+  var panel = document.getElementById('hud');
+  panel.classList.toggle('show');
+  if (panel.classList.contains('show')) renderHud();
+};
+document.addEventListener('click', function (ev) {
+  var panel = document.getElementById('hud');
+  var btn = document.getElementById('hud-btn');
+  if (!panel || !panel.classList.contains('show')) return;
+  if (panel.contains(ev.target) || btn.contains(ev.target)) return;
+  panel.classList.remove('show');
+});
 document.getElementById('plan-btn').onclick = showPlan;
 document.getElementById('wallet-close').onclick = function () {
   document.getElementById('walletOverlay').classList.remove('show');
@@ -994,6 +1089,7 @@ loadThreads();
 renderSidebar();
 renderLog();
 renderHeader();
+renderHud();
 loadModels();
 ensureDirectory().catch(function () {});
 retryPending402();

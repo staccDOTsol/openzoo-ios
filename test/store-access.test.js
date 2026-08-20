@@ -68,6 +68,11 @@ assert.ok(/jarettrsdunn1999@gmail\.com/.test(swift));
 const pluginJs = fs.readFileSync(path.join(__dirname, '../cordova-plugin-openzoo-store/www/openzoo-store.js'), 'utf8');
 assert.ok(/testFlight/.test(pluginJs));
 
+const app = fs.readFileSync(path.join(__dirname, '../www/app/app.js'), 'utf8');
+assert.ok(app.indexOf("var GATEWAY = 'https://x402-tokens.fly.dev'") !== -1);
+assert.ok(app.indexOf('OpenZooChatSpill.buildChatRequest') !== -1);
+assert.ok(!/\bSPAWN\b|\bworktree|\bPING:/.test(app));
+
 const shell = fs.readFileSync(path.join(__dirname, '../www/index.html'), 'utf8');
 assert.ok(shell.indexOf('id="dev-unlock"') !== -1);
 assert.ok(shell.indexOf('id="dev-email"') !== -1);
