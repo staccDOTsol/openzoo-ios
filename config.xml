@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <widget id="fun.openzoo.ios" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
     <name>OpenZoo</name>
-    <description>OpenZoo iOS — grokui-style chat in a CordovaSeeker shell. Phantom/Solflare deeplinks or in-app burner. No MWA.</description>
+    <description>OpenZoo iOS — App Store subscriptions first, grokui-style chat. No Stripe webview. No MWA.</description>
     <author href="https://github.com/staccDOTsol/openzoo-ios">
         OpenZoo
     </author>
@@ -9,6 +9,7 @@
     <!-- Local shell owns the wallet, loads the app in an iframe -->
     <content src="index.html" />
 
+    <access origin="https://zoo.openzoo.fun" />
     <access origin="https://x402-tokens.fly.dev" />
     <access origin="https://x402.accrue.fund" />
     <access origin="https://api.mainnet-beta.solana.com" />
@@ -43,7 +44,7 @@
     </platform>
 
     <platform name="ios">
-        <preference name="deployment-target" value="13.0" />
+        <preference name="deployment-target" value="15.0" />
         <preference name="UseSwiftLanguageVersion" value="5" />
         <preference name="scheme" value="app" />
         <preference name="hostname" value="localhost" />

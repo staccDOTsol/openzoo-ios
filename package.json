@@ -2,7 +2,7 @@
   "name": "fun.openzoo.ios",
   "displayName": "OpenZoo",
   "version": "1.0.0",
-  "description": "OpenZoo iOS — CordovaSeeker shell + grokui-style chat. Live x402 rails, wrap/top-up, Phantom/Solflare deeplinks or in-app burner. No MWA.",
+  "description": "OpenZoo iOS — App Store subscriptions first, grokui-style chat. StoreKit 2 IAP. No Stripe webview. No MWA.",
   "main": "index.js",
   "scripts": {
     "platform:ios": "cordova platform add ios",
@@ -13,7 +13,7 @@
     "requirements": "cordova requirements ios",
     "ios": "cordova platform add ios && cordova build ios",
     "smoke": "bash scripts/smoke-gateway.sh",
-    "test": "node test/supported-rails.test.js"
+    "test": "node test/supported-rails.test.js && node test/billing-tiers.test.js"
   },
   "keywords": [
     "ecosystem:cordova",
@@ -26,14 +26,16 @@
   "devDependencies": {
     "cordova": "^12.0.0",
     "cordova-ios": "^7.1.1",
-    "cordova-plugin-openzoo-wallet": "file:cordova-plugin-openzoo-wallet"
+    "cordova-plugin-openzoo-wallet": "file:cordova-plugin-openzoo-wallet",
+    "cordova-plugin-openzoo-store": "file:cordova-plugin-openzoo-store"
   },
   "cordova": {
     "platforms": [
       "ios"
     ],
     "plugins": {
-      "cordova-plugin-openzoo-wallet": {}
+      "cordova-plugin-openzoo-wallet": {},
+      "cordova-plugin-openzoo-store": {}
     }
   }
 }
