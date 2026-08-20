@@ -5,10 +5,11 @@ set -euo pipefail
 BASE="${OPENZOO_GATEWAY:-https://x402-tokens.fly.dev}"
 
 echo "== GET ${BASE}/v1/stats =="
-STATS="$(curl -fsS "${BASE}/v1/stats")"
-python3 - <<'PY' <<<"$STATS"
-import json, sys
-data = json.loads(sys.stdin.read())
+curl -fsS "${BASE}/v1/stats" -o /tmp/openzoo-stats.json
+python3 - <<'PY'
+import json
+with open("/tmp/openzoo-stats.json", encoding="utf-8") as fh:
+    data = json.load(fh)
 if not isinstance(data, dict):
     raise SystemExit("stats: expected a JSON object")
 print("stats: valid JSON")
@@ -18,10 +19,11 @@ PY
 
 echo
 echo "== GET ${BASE}/v1/models =="
-MODELS="$(curl -fsS "${BASE}/v1/models")"
-python3 - <<'PY' <<<"$MODELS"
-import json, sys
-data = json.loads(sys.stdin.read())
+curl -fsS "${BASE}/v1/models" -o /tmp/openzoo-models.json
+python3 - <<'PY'
+import json
+with open("/tmp/openzoo-models.json", encoding="utf-8") as fh:
+    data = json.load(fh)
 rows = data.get("data") if isinstance(data, dict) else data
 if not isinstance(rows, list) or not rows:
     raise SystemExit("models: expected a non-empty data list")

@@ -2,20 +2,38 @@
 (function (root) {
   'use strict';
 
+  var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
   function bytesToBase64(bytes) {
-    var s = '';
-    var chunk = 0x8000;
-    for (var i = 0; i < bytes.length; i += chunk) {
-      s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    var out = '';
+    var i = 0;
+    while (i < bytes.length) {
+      var a = bytes[i++];
+      var b = i < bytes.length ? bytes[i++] : NaN;
+      var c = i < bytes.length ? bytes[i++] : NaN;
+      var triple = (a << 16) | ((isNaN(b) ? 0 : b) << 8) | (isNaN(c) ? 0 : c);
+      out += B64[(triple >> 18) & 63] + B64[(triple >> 12) & 63];
+      out += isNaN(b) ? '=' : B64[(triple >> 6) & 63];
+      out += isNaN(c) ? '=' : B64[triple & 63];
     }
-    return btoa(s);
+    return out;
   }
 
   function base64ToBytes(b64) {
-    var bin = atob(b64);
-    var out = new Uint8Array(bin.length);
-    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-    return out;
+    var clean = String(b64).replace(/[^A-Za-z0-9+\/]/g, '');
+    var len = clean.length;
+    var out = new Uint8Array(Math.floor(len * 3 / 4));
+    var p = 0;
+    for (var i = 0; i < len; i += 4) {
+      var a = B64.indexOf(clean.charAt(i));
+      var b = B64.indexOf(clean.charAt(i + 1));
+      var c = B64.indexOf(clean.charAt(i + 2));
+      var d = B64.indexOf(clean.charAt(i + 3));
+      out[p++] = (a << 2) | (b >> 4);
+      if (c >= 0) out[p++] = ((b & 15) << 4) | (c >> 2);
+      if (d >= 0) out[p++] = ((c & 3) << 6) | d;
+    }
+    return out.subarray(0, p);
   }
 
   function bytesEq(a, b) {

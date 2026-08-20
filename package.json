@@ -28,7 +28,9 @@
     "cordova-plugin-openzoo-wallet": "file:cordova-plugin-openzoo-wallet"
   },
   "cordova": {
-    "platforms": [],
+    "platforms": [
+      "ios"
+    ],
     "plugins": {
       "cordova-plugin-openzoo-wallet": {}
     }

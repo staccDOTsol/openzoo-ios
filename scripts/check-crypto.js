@@ -3,19 +3,13 @@
 
 const fs = require('fs');
 const path = require('path');
-const vm = require('vm');
-const nacl = require(path.join(__dirname, '../www/vendor/nacl-fast.min.js'));
 
-const sandbox = { window: {}, globalThis: {}, nacl, console };
-sandbox.window = sandbox;
-sandbox.globalThis = sandbox;
-vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../www/vendor/bs58.js'), 'utf8'), sandbox);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../www/js/openzoo-crypto.js'), 'utf8'), sandbox);
+global.nacl = require(path.join(__dirname, '../www/vendor/nacl-fast.min.js'));
+eval(fs.readFileSync(path.join(__dirname, '../www/vendor/bs58.js'), 'utf8'));
+eval(fs.readFileSync(path.join(__dirname, '../www/js/openzoo-crypto.js'), 'utf8'));
 
-const { bs58, OpenZooCrypto } = sandbox;
-const pair = nacl.sign.keyPair();
-const address = bs58.encode(pair.publicKey);
+const pair = global.nacl.sign.keyPair();
+const address = global.bs58.encode(pair.publicKey);
 console.log('burner', address);
 
 (async () => {
@@ -31,25 +25,33 @@ console.log('burner', address);
   const quote = await chat.json();
   const row = (quote.accepts || []).find((a) => a.asset === '6ZjjxcoicqM4nniddkuPVwew4PDwY3swbfHsGbCuLuTv');
   if (!row) throw new Error('yUSDCx rail missing');
-  const built = await fetch('https://x402-tokens.fly.dev/v1/pay/build', {
+  const builtRes = await fetch('https://x402-tokens.fly.dev/v1/pay/build', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: 'openzoo-ios' },
     body: JSON.stringify({ accept: row, payer: address })
-  }).then((r) => {
-    if (!r.ok) throw new Error('pay/build ' + r.status);
-    return r.json();
   });
-  const unsigned = OpenZooCrypto.base64ToBytes(built.transaction);
-  const signed = OpenZooCrypto.partialSignTx(unsigned, pair.secretKey);
-  const sig = signed.subarray(1, 65);
-  const zero = sig.every((b) => b === 0);
-  if (zero) throw new Error('signature slot still empty');
-  const ok = nacl.sign.detached.verify(signed.subarray(1 + 64 * signed[0]), sig, pair.publicKey);
-  // message starts after compact-u16 + signatures; for 1-byte count this is fine when count < 128
+  if (!builtRes.ok) throw new Error('pay/build ' + builtRes.status + ' ' + await builtRes.text());
+  const built = await builtRes.json();
+  const unsigned = global.OpenZooCrypto.base64ToBytes(built.transaction);
+  const signed = global.OpenZooCrypto.partialSignTx(unsigned, pair.secretKey);
   const numSigs = unsigned[0];
+  if (numSigs >= 128) throw new Error('compact-u16 signature count needs a wider reader in this check');
   const message = signed.subarray(1 + 64 * numSigs);
-  const verified = nacl.sign.detached.verify(message, signed.subarray(1, 65), pair.publicKey);
-  if (!verified) throw new Error('detached verify failed');
+  var verified = false;
+  for (var i = 0; i < numSigs; i++) {
+    var sig = signed.subarray(1 + 64 * i, 1 + 64 * (i + 1));
+    if (sig.every(function (b) { return b === 0; })) continue;
+    if (global.nacl.sign.detached.verify(message, sig, pair.publicKey)) {
+      verified = true;
+      break;
+    }
+  }
+  if (!verified) throw new Error('burner signature missing or did not verify');
+  if (signed.subarray(1, 65).every(function (b) { return b === 0; })) {
+    console.log('feePayer slot left unsigned (expected for x402 partial sign)');
+  }
+  const roundtrip = global.OpenZooCrypto.base64ToBytes(global.OpenZooCrypto.bytesToBase64(signed));
+  if (roundtrip.length !== signed.length) throw new Error('base64 roundtrip length mismatch');
   console.log('partialSign ok, signed bytes', signed.length);
   console.log('check-crypto: ok');
 })().catch((err) => {
