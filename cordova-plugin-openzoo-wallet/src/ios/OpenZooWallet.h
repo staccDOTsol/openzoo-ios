@@ -8,6 +8,7 @@
 - (void)canOpenURL:(CDVInvokedUrlCommand*)command;
 - (void)openURL:(CDVInvokedUrlCommand*)command;
 - (void)copyToClipboard:(CDVInvokedUrlCommand*)command;
+- (void)httpRequest:(CDVInvokedUrlCommand*)command;
 - (BOOL)shouldOverrideLoadWithRequest:(NSURLRequest*)request navigationType:(NSInteger)navigationType;
 
 @end

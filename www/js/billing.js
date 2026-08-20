@@ -117,7 +117,7 @@
   }
 
   function loadTiers(fetchImpl) {
-    var fetchFn = fetchImpl || root.fetch;
+    var fetchFn = fetchImpl || (root.OpenZooHttp && root.OpenZooHttp.request) || root.fetch;
     return fetchFn(TIERS_URL, { method: 'GET' }).then(function (res) {
       if (!res.ok) throw new Error('tiers ' + res.status);
       return res.json();
@@ -127,7 +127,7 @@
   }
 
   function exchangeAppStore(payload, fetchImpl) {
-    var fetchFn = fetchImpl || root.fetch;
+    var fetchFn = fetchImpl || (root.OpenZooHttp && root.OpenZooHttp.request) || root.fetch;
     return fetchFn(APPSTORE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -22,7 +22,7 @@ Live web copy (do not invent prices): Basic $9/mo, Pro $29/mo (Most teams want t
 
 ## Wallet (optional, not first-run)
 
-`cordova-plugin-mwa` is unused Android code. The shell never calls `MWA.*`. Phantom custom scheme is `phantom://v1/…` (no `ul/`); https is last resort via UIApplication. WKWebView never shows raw “Load failed”. Wallet addresses are tap-to-copy. 402s persist across the wallet background. A labeled **New chat** button sits on the main header.
+`cordova-plugin-mwa` is unused Android code. The shell never calls `MWA.*`. Phantom custom scheme is `phantom://v1/…` (no `ul/`); https is last resort via UIApplication. WKWebView never shows raw “Load failed”. Burner and Phantom both pay through native `NSURLSession` (iframe is `app://localhost`; WKWebView `fetch` CORS dies as TypeError Load failed). CSP `connect-src` is on both `www/index.html` and `www/app/index.html`. Wallet addresses are tap-to-copy. 402s persist across the wallet background. A labeled **New chat** button sits on the main header next to the menu.
 
 ## Mac build (Xcode required)
 

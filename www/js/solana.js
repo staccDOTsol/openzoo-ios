@@ -208,7 +208,8 @@
   }
 
   function rpcCall(url, method, params) {
-    return fetch(url, {
+    var http = (root.OpenZooHttp && root.OpenZooHttp.request) || root.fetch;
+    return http(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: method, params: params })

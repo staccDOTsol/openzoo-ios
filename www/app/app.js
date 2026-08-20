@@ -107,7 +107,7 @@ function api(path, options) {
     'Content-Type': 'application/json',
     'Authorization': subscription.key ? ('Bearer ' + subscription.key) : 'openzoo-ios'
   }, options.headers || {});
-  return fetch(GATEWAY + path, {
+  return OpenZooHttp.request(GATEWAY + path, {
     method: options.method || 'GET',
     headers: headers,
     body: options.body ? JSON.stringify(options.body) : undefined

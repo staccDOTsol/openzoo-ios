@@ -37,8 +37,16 @@
       }
 
       var plugin = opts.plugin;
-      if (!plugin && root.OpenZooWallet && typeof root.OpenZooWallet.copyToClipboard === 'function') {
-        plugin = root.OpenZooWallet.copyToClipboard.bind(root.OpenZooWallet);
+      if (!plugin) {
+        var bridge = root.OpenZooWallet;
+        try {
+          if ((!bridge || typeof bridge.copyToClipboard !== 'function') && root.parent && root.parent !== root) {
+            bridge = root.parent.OpenZooWallet;
+          }
+        } catch (_) {}
+        if (bridge && typeof bridge.copyToClipboard === 'function') {
+          plugin = bridge.copyToClipboard.bind(bridge);
+        }
       }
       if (typeof plugin === 'function') {
         try {

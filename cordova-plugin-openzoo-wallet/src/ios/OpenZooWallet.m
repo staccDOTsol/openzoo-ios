@@ -95,6 +95,46 @@ static NSString * const kOpenZooKeychainService = @"fun.openzoo.ios";
     });
 }
 
+- (void)httpRequest:(CDVInvokedUrlCommand*)command {
+    NSString *urlString = [command argumentAtIndex:0];
+    NSDictionary *opts = [command argumentAtIndex:1] ?: @{};
+    NSURL *url = [NSURL URLWithString:urlString ?: @""];
+    if (url == nil) {
+        [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"invalid url"] callbackId:command.callbackId];
+        return;
+    }
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    NSString *method = opts[@"method"];
+    req.HTTPMethod = (method.length ? method : @"GET");
+    req.timeoutInterval = 60;
+    id headers = opts[@"headers"];
+    if ([headers isKindOfClass:[NSDictionary class]]) {
+        for (NSString *key in headers) {
+            [req setValue:[NSString stringWithFormat:@"%@", headers[key]] forHTTPHeaderField:key];
+        }
+    }
+    id body = opts[@"body"];
+    if ([body isKindOfClass:[NSString class]] && [(NSString *)body length] > 0) {
+        req.HTTPBody = [(NSString *)body dataUsingEncoding:NSUTF8StringEncoding];
+    }
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:(error.localizedDescription ?: @"network error")] callbackId:command.callbackId];
+            return;
+        }
+        NSInteger status = 0;
+        if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
+            status = [(NSHTTPURLResponse *)response statusCode];
+        }
+        NSString *text = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"";
+        [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsDictionary:@{
+            @"status": @(status),
+            @"text": text ?: @""
+        }] callbackId:command.callbackId];
+    }];
+    [task resume];
+}
+
 - (void)copyToClipboard:(CDVInvokedUrlCommand*)command {
     NSString *text = [command argumentAtIndex:0];
     if (text == nil) {

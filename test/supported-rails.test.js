@@ -15,6 +15,7 @@ const wallet = require('../www/js/wallet-ios.js');
 const errors = require('../www/js/user-errors.js');
 const pay402 = require('../www/js/pay402.js');
 const clipboard = require('../www/js/clipboard.js');
+const http = require('../www/js/native-http.js');
 
 const FXY = 'FXYkwMtfKpA174rp8ixVeiGs5TYGaBsYRrHE3KrR449B';
 const BO7X = 'Bo7xBF7SY8EyUBPUxRP66SFafxoPf2n5uqiLjbxEebx9';
@@ -78,6 +79,22 @@ const tenToken = wrap.pickLargestUseful(
 );
 assert.strictEqual(tenToken.length, 1, '$10 TOKEN still wraps a tiny twin 402');
 assert.strictEqual(wrap.pickLargestUseful(wrap.holdingsMap([]), [source], { [FXY]: 1n }).length, 0);
+assert.ok(!/held < need/.test(fs.readFileSync(path.join(__dirname, '../www/js/wrap.js'), 'utf8')));
+
+const hosts = [
+  'x402-tokens.fly.dev',
+  'x402.accrue.fund',
+  'api.mainnet-beta.solana.com',
+  'solana-rpc.publicnode.com'
+];
+const shellHtml = fs.readFileSync(path.join(__dirname, '../www/index.html'), 'utf8');
+const appHtml = fs.readFileSync(path.join(__dirname, '../www/app/index.html'), 'utf8');
+hosts.forEach(function (host) {
+  assert.ok(shellHtml.indexOf(host) !== -1, 'shell CSP covers ' + host);
+  assert.ok(appHtml.indexOf(host) !== -1, 'app iframe CSP covers ' + host);
+});
+assert.ok(appHtml.indexOf('header-new-chat') !== -1);
+assert.ok(appHtml.indexOf('>New chat<') !== -1);
 
 assert.strictEqual(wrap.depositForShares(1000n, 0n, 0n), 2000n);
 
@@ -185,6 +202,33 @@ clipboard.copyText('addr-1', {
   });
 }).then(function (via) {
   assert.strictEqual(via, 'clipboard-api');
+  return http.request('https://x402-tokens.fly.dev/v1/models', {
+    fetch: function (url, opts) {
+      assert.ok(String(url).indexOf('x402-tokens.fly.dev') !== -1);
+      assert.strictEqual(opts.method, 'GET');
+      return Promise.resolve({ ok: true, status: 200 });
+    }
+  });
+}).then(function (res) {
+  assert.strictEqual(res.status, 200);
+  return http.request('https://example.test', {
+    fetch: function () { return Promise.resolve({ ok: true, status: 204 }); }
+  });
+}).then(function () {
+  global.OpenZooWallet = {
+    httpRequest: function (url, opts, ok) {
+      assert.strictEqual(url, 'https://x402-tokens.fly.dev/v1/pay/build');
+      ok({ status: 402, text: '{"accepts":[]}' });
+    }
+  };
+  delete require.cache[require.resolve('../www/js/native-http.js')];
+  const http2 = require('../www/js/native-http.js');
+  return http2.request('https://x402-tokens.fly.dev/v1/pay/build', { method: 'POST' });
+}).then(function (res) {
+  assert.strictEqual(res.status, 402);
+  return res.json();
+}).then(function (body) {
+  assert.ok(body && Array.isArray(body.accepts));
   console.log('supported-rails: ok');
   console.log('  FXY symbol', parsed.rails[FXY].symbol);
   console.log('  wrap source', source.underlyingSymbol, source.underlying);

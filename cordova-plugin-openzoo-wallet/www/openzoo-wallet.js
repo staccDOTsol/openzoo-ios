@@ -44,6 +44,14 @@ var OpenZooWallet = {
      */
     copyToClipboard: function(text, success, error) {
         cordovaExec(success, error, 'OpenZooWallet', 'copyToClipboard', [text]);
+    },
+
+    /**
+     * HTTPS via NSURLSession. Bypasses WKWebView CORS from app://localhost.
+     * Success is { status, text }.
+     */
+    httpRequest: function(url, opts, success, error) {
+        cordovaExec(success, error, 'OpenZooWallet', 'httpRequest', [url, opts || {}]);
     }
 };
 

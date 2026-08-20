@@ -119,7 +119,7 @@
     if (cache.kinds && now - cache.at < CACHE_MS) {
       return Promise.resolve(parseSupported({ kinds: cache.kinds }));
     }
-    var fetchFn = fetchImpl || root.fetch;
+    var fetchFn = fetchImpl || (root.OpenZooHttp && root.OpenZooHttp.request) || root.fetch;
     return fetchFn(SUPPORTED_URL, { method: 'GET' }).then(function (res) {
       if (!res.ok) throw new Error('Could not load payment options');
       return res.json();
