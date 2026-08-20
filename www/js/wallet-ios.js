@@ -11,7 +11,7 @@
       method: 'phantom',
       name: 'Phantom',
       httpsBase: 'https://phantom.app/ul/v1/',
-      appBase: 'phantom://ul/v1/',
+      appBase: 'phantom://v1/',
       connectUrl: 'https://phantom.app/ul/v1/connect',
       signTxUrl: 'https://phantom.app/ul/v1/signTransaction',
       signSendUrl: 'https://phantom.app/ul/v1/signAndSendTransaction',
@@ -44,8 +44,21 @@
   }
 
   function methodUrl(provider, method, installed) {
+    if (provider.method === 'phantom') return provider.appBase + method;
     if (installed === true && provider.appBase) return provider.appBase + method;
     return provider.httpsBase + method;
+  }
+
+  function openUrlPlan(provider, method, installed) {
+    var app = provider.appBase + method;
+    var https = provider.httpsBase + method;
+    if (provider.method === 'phantom') {
+      return { primary: app, fallback: https, forceNative: true };
+    }
+    if (installed === true && provider.appBase) {
+      return { primary: app, fallback: https, forceNative: false };
+    }
+    return { primary: https, fallback: null, forceNative: false };
   }
 
   function lsGet(k) {
@@ -101,12 +114,17 @@
     });
   }
 
-  function openExternal(url) {
+  function openExternal(url, opts) {
+    opts = opts || {};
     return new Promise(function (resolve, reject) {
       if (pluginReady()) {
         root.OpenZooWallet.openURL(url, function () { resolve(); }, function (err) {
           reject(new Error(err || 'Could not open URL'));
         });
+        return;
+      }
+      if (opts.forceNative) {
+        reject(new Error('Wallet open needs the native shell'));
         return;
       }
       var opened = root.open(url, '_system');
@@ -115,6 +133,16 @@
         return;
       }
       resolve();
+    });
+  }
+
+  function openProviderMethod(provider, method, query, installed) {
+    var plan = openUrlPlan(provider, method, installed);
+    var q = query ? ('?' + query) : '';
+    var opts = { forceNative: !!plan.forceNative };
+    return openExternal(plan.primary + q, opts).catch(function (err) {
+      if (!plan.fallback) throw err;
+      return openExternal(plan.fallback + q, opts);
     });
   }
 
@@ -175,7 +203,7 @@
     var provider = PROVIDERS[providerId];
     if (!provider) return Promise.reject(new Error('Unknown wallet'));
     return canOpen(provider.probe).then(function (probe) {
-      if (probe.installed === false) {
+      if (provider.method !== 'phantom' && probe.installed === false) {
         throw new Error(provider.name + ' is not installed on this phone.');
       }
       return ensureDappKeyPair().then(function (pair) {
@@ -189,16 +217,15 @@
           redirect_link: provider.redirect,
           cluster: 'mainnet-beta'
         });
-        var url = methodUrl(provider, 'connect', probe.installed) + '?' + params.toString();
-        if (probe.installed === null) {
-          return openExternal(url).then(function () {
+        return openProviderMethod(provider, 'connect', params.toString(), probe.installed).then(function () {
+          if (probe.installed === null) {
             return {
               opened: true,
               warning: 'Cannot verify ' + provider.name + ' is installed from this environment. If it is missing, the system will open a website — we will not claim a wallet we cannot reach.'
             };
-          });
-        }
-        return openExternal(url).then(function () { return { opened: true }; });
+          }
+          return { opened: true };
+        });
       });
     });
   }
@@ -210,7 +237,7 @@
       return Promise.reject(new Error('No deeplink wallet session. Connect Phantom or Solflare first.'));
     }
     return canOpen(provider.probe).then(function (probe) {
-      if (probe.installed === false) {
+      if (provider.method !== 'phantom' && probe.installed === false) {
         throw new Error(provider.name + ' is not installed on this phone.');
       }
       return ensureDappKeyPair().then(function (pair) {
@@ -229,7 +256,7 @@
           redirect_link: provider.redirect,
           payload: bs58.encode(enc.bytes)
         });
-        return openExternal(methodUrl(provider, 'signTransaction', probe.installed) + '?' + params.toString());
+        return openProviderMethod(provider, 'signTransaction', params.toString(), probe.installed);
       });
     });
   }
@@ -241,7 +268,7 @@
       return Promise.reject(new Error('No deeplink wallet session. Connect Phantom or Solflare first.'));
     }
     return canOpen(provider.probe).then(function (probe) {
-      if (probe.installed === false) {
+      if (provider.method !== 'phantom' && probe.installed === false) {
         throw new Error(provider.name + ' is not installed on this phone.');
       }
       return ensureDappKeyPair().then(function (pair) {
@@ -260,7 +287,7 @@
           redirect_link: provider.redirect,
           payload: bs58.encode(enc.bytes)
         });
-        return openExternal(methodUrl(provider, 'signAndSendTransaction', probe.installed) + '?' + params.toString());
+        return openProviderMethod(provider, 'signAndSendTransaction', params.toString(), probe.installed);
       });
     });
   }
@@ -272,7 +299,7 @@
       return Promise.reject(new Error('No deeplink wallet session. Connect Phantom or Solflare first.'));
     }
     return canOpen(provider.probe).then(function (probe) {
-      if (probe.installed === false) {
+      if (provider.method !== 'phantom' && probe.installed === false) {
         throw new Error(provider.name + ' is not installed on this phone.');
       }
       return ensureDappKeyPair().then(function (pair) {
@@ -291,7 +318,7 @@
           redirect_link: provider.redirect,
           payload: bs58.encode(enc.bytes)
         });
-        return openExternal(methodUrl(provider, 'signMessage', probe.installed) + '?' + params.toString());
+        return openProviderMethod(provider, 'signMessage', params.toString(), probe.installed);
       });
     });
   }
@@ -461,6 +488,8 @@
     signAndSendTransactionDeeplink: signAndSendTransactionDeeplink,
     signMessageDeeplink: signMessageDeeplink,
     methodUrl: methodUrl,
+    openUrlPlan: openUrlPlan,
+    openProviderMethod: openProviderMethod,
     walletError: walletError,
     handleRedirectUrl: handleRedirectUrl,
     connectBurner: connectBurner,

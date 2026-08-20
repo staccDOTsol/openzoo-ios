@@ -3,7 +3,7 @@
         id="cordova-plugin-openzoo-wallet"
         version="1.0.0">
     <name>OpenZoo Wallet</name>
-    <description>Keychain secret store, canOpenURL, and system URL open for the OpenZoo iOS shell</description>
+    <description>Keychain, clipboard, canOpenURL, UIApplication.openURL, and Phantom handoff so https://phantom.app never loads in the WKWebView</description>
 
     <js-module src="www/openzoo-wallet.js" name="OpenZooWallet">
         <clobbers target="OpenZooWallet" />
