@@ -5,56 +5,80 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src https://x402-tokens.fly.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src https://x402-tokens.fly.dev https://x402.accrue.fund https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline';">
   <title>OpenZoo</title>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <header id="wallet-bar">
-    <div>
-      <div class="brand">OPENZOO</div>
-      <div id="wallet-label">no wallet</div>
+  <div id="copiedToast" role="status">copied</div>
+  <div id="scrim" class="hidden"></div>
+  <aside id="sidebar">
+    <div id="sideTop">
+      <button class="icon-btn" id="new-thread" title="New chat" aria-label="New chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <input id="search" placeholder="Search" autocomplete="off">
+      <button class="icon-btn" id="close-sidebar" title="Close" aria-label="Close sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
-    <button type="button" id="exit-btn">✕ SHELL</button>
-  </header>
+    <div id="threads"></div>
+  </aside>
 
-  <nav id="tabs">
-    <button type="button" class="tab on" data-tab="chat">Chat</button>
-    <button type="button" class="tab" data-tab="bind">Bind</button>
-    <button type="button" class="tab" data-tab="stats">Stats</button>
-  </nav>
+  <main id="main">
+    <header id="chatHeader">
+      <button class="icon-btn" id="menu-btn" aria-label="Chats">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      </button>
+      <div id="chatHeaderId">
+        <div class="tavatar" id="header-avatar">OZ</div>
+        <div class="hname">
+          <div id="header-name">New chat</div>
+          <div class="hdir" id="header-sub">openzoo</div>
+        </div>
+      </div>
+      <div id="headerDials">
+        <select class="dial" id="model" aria-label="Model"></select>
+        <button class="dial" id="wallet-btn" type="button">wallet</button>
+        <button class="icon-btn" id="exit-btn" title="Back to shell">✕</button>
+      </div>
+    </header>
 
-  <section id="panel-chat" class="panel">
-    <div class="row">
-      <label for="model">Model</label>
-      <select id="model"></select>
+    <div id="log" aria-live="polite"></div>
+
+    <div id="bar">
+      <div id="plusMenu">
+        <div class="pop-item" id="attach-files">Attach files</div>
+        <div class="pop-item" id="attach-photos">Use photos</div>
+        <div class="pop-item" id="attach-folder">Use a folder</div>
+        <div class="pop-item" id="attach-paste">Paste text</div>
+      </div>
+      <input id="file-inp" type="file" multiple hidden>
+      <input id="photo-inp" type="file" accept="image/*" multiple hidden>
+      <input id="folder-inp" type="file" webkitdirectory multiple hidden>
+      <div id="attachChips"></div>
+      <div id="row-input">
+        <div id="pill">
+          <button class="icon-btn" id="plus-btn" type="button" aria-label="Attach">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <textarea id="inp" rows="1" placeholder="Message" autocomplete="off"></textarea>
+        </div>
+        <button id="send" type="button" aria-label="Send">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
+        </button>
+      </div>
     </div>
-    <div id="chat-log" aria-live="polite"></div>
-    <form id="chat-form">
-      <textarea id="chat-input" rows="3" placeholder="Message the gateway…"></textarea>
-      <button type="submit" id="send-btn">SEND</button>
-    </form>
-  </section>
+  </main>
 
-  <section id="panel-bind" class="panel hidden">
-    <p class="hint">Bind is free. Paste text or pick a text file. The returned <code>context_id</code> can be attached to chat as <code>X-HRR-Context</code>. If the gateway says the context is gone, re-bind — do not pay.</p>
-    <textarea id="corpus" rows="8" placeholder="Paste a corpus…"></textarea>
-    <div class="row">
-      <input type="file" id="corpus-file" accept=".txt,text/plain,text/*">
+  <div id="walletOverlay">
+    <div id="walletBox">
+      <h3>Your wallet</h3>
+      <p class="wsub" id="wallet-sub">This is the wallet the chat pays from. Connect it in the shell. Payments are signed here; a top-up may be sent first if this wallet needs it.</p>
+      <div id="wallet-body"></div>
+      <button class="dial" id="wallet-close" type="button">Close</button>
     </div>
-    <label class="check">
-      <input type="checkbox" id="attach-context" checked>
-      Attach context_id to the next chat calls
-    </label>
-    <button type="button" id="bind-btn">BIND CORPUS</button>
-    <pre id="bind-out" class="json"></pre>
-  </section>
-
-  <section id="panel-stats" class="panel hidden">
-    <p class="hint">Live <code>GET /v1/stats</code> from x402-tokens.fly.dev. Rendered as returned.</p>
-    <button type="button" id="stats-btn">REFRESH STATS</button>
-    <pre id="stats-out" class="json"></pre>
-  </section>
+  </div>
 
   <div id="modal" class="hidden" role="dialog" aria-modal="true">
     <div class="sheet">
@@ -65,6 +89,12 @@
     </div>
   </div>
 
+  <script src="../vendor/nacl-fast.min.js"></script>
+  <script src="../vendor/bs58.js"></script>
+  <script src="../js/openzoo-crypto.js"></script>
+  <script src="../js/rails.js"></script>
+  <script src="../js/solana.js"></script>
+  <script src="../js/wrap.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

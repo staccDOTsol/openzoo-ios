@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="color-scheme" content="dark">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://x402-tokens.fly.dev; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'; media-src 'self';">
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' https://x402-tokens.fly.dev https://x402.accrue.fund https://api.mainnet-beta.solana.com https://solana-rpc.publicnode.com; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self'; media-src 'self';">
   <title>OpenZoo</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -94,7 +94,7 @@
 <body>
   <div class="logo" data-component="logo">🦓</div>
   <div class="title" data-component="title">OPENZOO</div>
-  <div class="sub">Chat, bind, and stats against x402-tokens.fly.dev. The shell owns the wallet. iOS never calls MWA.</div>
+  <div class="sub">The shell owns the wallet. Chat, attach files, and pay from the app. iOS never calls MWA.</div>
   <div class="divider"></div>
 
   <div id="picker" data-component="wallet-picker">
@@ -120,6 +120,7 @@
   <script src="vendor/nacl-fast.min.js"></script>
   <script src="vendor/bs58.js"></script>
   <script src="js/openzoo-crypto.js"></script>
+  <script src="js/solana.js"></script>
   <script src="js/wallet-ios.js"></script>
   <script>
   'use strict';
@@ -244,7 +245,16 @@
           id: result.id,
           signedTransaction: result.signedTransaction
         });
-        setStatus('Transaction signed. Returning to OpenZoo.');
+        setStatus('Approved. Returning to OpenZoo.');
+        return;
+      }
+      if (result.type === 'signed-send-tx') {
+        respondToIframe({
+          type: 'wallet-sign-and-send-transaction-response',
+          id: result.id,
+          signature: result.signature
+        });
+        setStatus('Top up sent. Returning to OpenZoo.');
         return;
       }
       if (result.type === 'signed-msg') {
@@ -255,10 +265,16 @@
         });
       }
     }).catch(function (err) {
-      var pending = OpenZooIOSWallet.loadPersisted().pending;
+      var pending = err.pending || OpenZooIOSWallet.loadPersisted().pending;
       if (pending && pending.kind === 'sign-tx') {
         respondToIframe({
           type: 'wallet-sign-transaction-response',
+          id: pending.id,
+          error: err.message || String(err)
+        });
+      } else if (pending && pending.kind === 'sign-send-tx') {
+        respondToIframe({
+          type: 'wallet-sign-and-send-transaction-response',
           id: pending.id,
           error: err.message || String(err)
         });
@@ -347,6 +363,34 @@
         return;
       }
       txRespond({ error: 'No wallet connected' });
+      return;
+    }
+
+    if (data.type === 'wallet-sign-and-send-transaction') {
+      var sendRespond = function (payload) {
+        payload.type = 'wallet-sign-and-send-transaction-response';
+        payload.id = data.id;
+        respondToIframe(payload);
+      };
+      if (!data.transaction) {
+        sendRespond({ error: 'Missing unsigned transaction' });
+        return;
+      }
+      if (connectedMethod === 'burner') {
+        OpenZooIOSWallet.signTransactionBurner(data.transaction).then(function (r) {
+          return OpenZooSolana.sendRawTransaction(OpenZooCrypto.base64ToBytes(r.signedTransaction));
+        }).then(function (signature) {
+          sendRespond({ signature: signature });
+        }).catch(function (err) { sendRespond({ error: err.message || String(err) }); });
+        return;
+      }
+      if (connectedMethod === 'phantom' || connectedMethod === 'solflare') {
+        OpenZooIOSWallet.signAndSendTransactionDeeplink(data.transaction, data.id).catch(function (err) {
+          sendRespond({ error: err.message || String(err) });
+        });
+        return;
+      }
+      sendRespond({ error: 'No wallet connected' });
     }
   });
 
