@@ -42,6 +42,12 @@
       font: inherit; background: #1c1c1e; color: #ececec; border: 1px solid #2c2c2e;
     }
     #status { margin-top: 12px; font-size: 12px; color: #8e8e93; text-align: center; min-height: 18px; }
+    #dev-unlock { display: none; margin-top: 16px; }
+    #dev-unlock.show { display: block; }
+    #dev-email {
+      width: 100%; border-radius: 10px; padding: 8px 10px; font: 12px/1.4 inherit;
+      background: #0b0b0d; color: #8e8e93; border: 1px solid #2c2c2e;
+    }
     .close { font-size: 12px; color: #6f7080; text-align: center; margin-top: 14px; line-height: 1.5; }
     #advanced { display: none; width: 100%; max-width: 420px; margin-top: 18px; }
     #advanced.show { display: block; }
@@ -62,6 +68,9 @@
   <div id="paywall">
     <div id="tiers"></div>
     <button class="ghost" id="btn-restore" type="button">Restore purchases</button>
+    <div id="dev-unlock">
+      <input id="dev-email" type="email" inputmode="email" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="dev">
+    </div>
     <div id="status"></div>
     <p class="close" id="close-copy">No x402, no wallet, no per-call signing.</p>
   </div>
@@ -98,6 +107,7 @@
   var connectedAddress = null;
   var connectedMethod = null;
   var catalog = null;
+  var debugBuild = false;
   var GAME_URL = 'app/index.html';
   var GAME_ORIGIN = '*';
 
@@ -146,6 +156,7 @@
       productId: sub.productId || null,
       key: sub.key || null,
       pending: !!sub.pending,
+      localUnlock: !!(debugBuild && sub.localUnlock),
       address: connectedAddress,
       method: connectedMethod
     }, GAME_ORIGIN);
@@ -203,6 +214,23 @@
         tier.maxBindLabel + ' · top-k ' + tier.maxTopK);
       btn.onclick = function () { subscribe(tier); };
       $tiers.appendChild(btn);
+    });
+  }
+
+  function persistLocalUnlockAndEnter() {
+    var saved = currentSub() || {};
+    OpenZooIOSStore.saveSubscription(OpenZooIOSStore.applyLocalUnlock(saved));
+    launchApp();
+  }
+
+  function tryDevUnlock() {
+    if (!debugBuild) return;
+    var email = (document.getElementById('dev-email').value || '').trim();
+    if (!email) return;
+    OpenZooIOSStore.debugUnlock(email).then(function () {
+      persistLocalUnlockAndEnter();
+    }).catch(function () {
+      setStatus('Could not use that.');
     });
   }
 
@@ -288,6 +316,13 @@
   }
 
   document.getElementById('btn-restore').onclick = restorePurchases;
+  document.getElementById('dev-email').addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      tryDevUnlock();
+    }
+  });
+  document.getElementById('dev-email').addEventListener('change', tryDevUnlock);
   document.getElementById('btn-phantom').onclick = function () {
     OpenZooIOSWallet.connectDeeplink('phantom').catch(function (err) { setStatus(err.message || String(err)); });
   };
@@ -434,27 +469,42 @@
     }
   });
 
+  function maybeLaunchFromSaved() {
+    var saved = currentSub();
+    if (!OpenZooIOSStore.hasAccess(saved, { debug: debugBuild })) return false;
+    if (saved.pending && saved.jws) {
+      OpenZooBilling.exchangeAppStore(saved).then(function (ex) {
+        if (ex.ok && ex.key) {
+          saved.key = ex.key;
+          saved.pending = false;
+          OpenZooIOSStore.saveSubscription(saved);
+        }
+        launchApp();
+      });
+      return true;
+    }
+    launchApp();
+    return true;
+  }
+
   function boot() {
     OpenZooBilling.loadTiers().then(renderTiers);
-    var saved = currentSub();
-    if (OpenZooIOSStore.hasAccess(saved)) {
-      if (saved.pending && saved.jws) {
-        OpenZooBilling.exchangeAppStore(saved).then(function (ex) {
-          if (ex.ok && ex.key) {
-            saved.key = ex.key;
-            saved.pending = false;
-            OpenZooIOSStore.saveSubscription(saved);
-          }
-          launchApp();
-        });
-        return;
-      }
-      launchApp();
-    }
+    maybeLaunchFromSaved();
   }
 
   document.addEventListener('deviceready', function () {
     if (OpenZooIOSStore.pluginReady()) {
+      OpenZooIOSStore.debugBuild().then(function (flag) {
+        debugBuild = flag === true || flag === 'true' || flag === 1;
+        if (debugBuild) document.getElementById('dev-unlock').classList.add('show');
+        return OpenZooIOSStore.debugUnlockStatus();
+      }).then(function (status) {
+        if (debugBuild && status && status.unlocked) {
+          persistLocalUnlockAndEnter();
+          return;
+        }
+        maybeLaunchFromSaved();
+      }).catch(function () {});
       OpenZooIOSStore.entitlements().then(function (rows) {
         if ((!currentSub() || !currentSub().jws) && rows && rows[0]) {
           return OpenZooBilling.exchangeAppStore(rows[0]).then(function (ex) {

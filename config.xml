@@ -45,6 +45,8 @@
     <platform name="ios">
         <preference name="deployment-target" value="15.0" />
         <preference name="UseSwiftLanguageVersion" value="5" />
+        <preference name="SwiftVersion" value="5" />
+        <hook type="after_prepare" src="hooks/ios-swift-version.js" />
         <preference name="scheme" value="app" />
         <preference name="hostname" value="localhost" />
 

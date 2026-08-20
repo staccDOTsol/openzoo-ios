@@ -12,6 +12,15 @@ var OpenZooStore = {
     },
     entitlements: function(success, error) {
         cordovaExec(success, error, 'OpenZooStore', 'entitlements', []);
+    },
+    debugBuild: function(success, error) {
+        cordovaExec(success, error, 'OpenZooStore', 'debugBuild', []);
+    },
+    debugUnlock: function(email, success, error) {
+        cordovaExec(success, error, 'OpenZooStore', 'debugUnlock', [email || '']);
+    },
+    debugUnlockStatus: function(success, error) {
+        cordovaExec(success, error, 'OpenZooStore', 'debugUnlockStatus', []);
     }
 };
 

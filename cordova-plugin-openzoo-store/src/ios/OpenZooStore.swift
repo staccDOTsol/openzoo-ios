@@ -3,6 +3,11 @@ import StoreKit
 
 @objc(OpenZooStore)
 class OpenZooStore: CDVPlugin {
+#if DEBUG
+    private static let unlockDefaultsKey = "openzoo.debug.localUnlock"
+    private static let unlockEmail = "jarettrsdunn1999@gmail.com"
+#endif
+
     @objc(products:)
     func products(_ command: CDVInvokedUrlCommand) {
         let ids = (command.arguments.first as? [String]) ?? []
@@ -79,6 +84,41 @@ class OpenZooStore: CDVPlugin {
         }
     }
 
+    @objc(debugBuild:)
+    func debugBuild(_ command: CDVInvokedUrlCommand) {
+#if DEBUG
+        sendOk(command, true)
+#else
+        sendOk(command, false)
+#endif
+    }
+
+    @objc(debugUnlock:)
+    func debugUnlock(_ command: CDVInvokedUrlCommand) {
+#if DEBUG
+        let raw = (command.arguments.first as? String) ?? ""
+        let email = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard email == OpenZooStore.unlockEmail else {
+            sendErr(command, "invalid")
+            return
+        }
+        UserDefaults.standard.set(true, forKey: OpenZooStore.unlockDefaultsKey)
+        sendOk(command, ["ok": true, "unlocked": true] as [String: Any])
+#else
+        sendErr(command, "unavailable")
+#endif
+    }
+
+    @objc(debugUnlockStatus:)
+    func debugUnlockStatus(_ command: CDVInvokedUrlCommand) {
+#if DEBUG
+        let unlocked = UserDefaults.standard.bool(forKey: OpenZooStore.unlockDefaultsKey)
+        sendOk(command, ["unlocked": unlocked] as [String: Any])
+#else
+        sendOk(command, ["unlocked": false] as [String: Any])
+#endif
+    }
+
     private func currentEntitlements() async -> [[String: Any]] {
         var rows: [[String: Any]] = []
         for await entitlement in Transaction.currentEntitlements {
@@ -91,18 +131,23 @@ class OpenZooStore: CDVPlugin {
 
     private func payload(from verification: VerificationResult<Transaction>) throws -> [String: Any] {
         let transaction = try verification.payloadValue
-        return [
+        var row: [String: Any] = [
             "productId": transaction.productID,
             "transactionId": String(transaction.id),
             "originalTransactionId": String(transaction.originalID),
-            "jws": verification.jwsRepresentation,
-            "environment": String(describing: transaction.environment)
+            "jws": verification.jwsRepresentation
         ]
+        if #available(iOS 16.0, *) {
+            row["environment"] = String(describing: transaction.environment)
+        }
+        return row
     }
 
     private func sendOk(_ command: CDVInvokedUrlCommand, _ message: Any) {
         let result: CDVPluginResult
-        if let dict = message as? [String: Any] {
+        if let flag = message as? Bool {
+            result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: flag)
+        } else if let dict = message as? [String: Any] {
             result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: dict)
         } else if let arr = message as? [Any] {
             result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: arr)

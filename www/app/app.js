@@ -13,7 +13,7 @@ var TEXT_EXTS = {
 var AVATAR_COLORS = ['#0a84ff', '#30d158', '#ff9f0a', '#ff453a', '#bf5af2', '#64d2ff'];
 
 var wallet = { address: null, method: null };
-var subscription = { tier: null, key: null, productId: null, pending: false };
+var subscription = { tier: null, key: null, productId: null, pending: false, localUnlock: false };
 var pendingSign = {};
 var signSeq = 1;
 var threads = [];
@@ -744,6 +744,11 @@ function sendChat(userText, payment) {
           thinking.text.textContent = userFacingPayError(err);
         });
       }
+      if (subscription.localUnlock) {
+        thinking.row.classList.add('err');
+        thinking.text.textContent = 'This session is unlocked locally. The zoo still asked for a subscription key.';
+        return;
+      }
       if (subscription.key || subscription.pending) {
         thinking.row.classList.add('err');
         thinking.text.textContent = subscription.pending
@@ -842,6 +847,7 @@ function showPlan() {
   var body = document.getElementById('wallet-body');
   var label = subscription.tier ? subscription.tier : 'none yet';
   var extra = subscription.pending ? 'Purchase saved. Waiting on POST /api/billing/appstore to mint the same key Stripe checkout would.' : '';
+  if (subscription.localUnlock && !subscription.productId) extra = extra || 'Local debug session.';
   body.innerHTML = '<div class="waddr"></div><p class="wsub" id="plan-extra"></p>';
   body.querySelector('.waddr').textContent = 'Plan: ' + label + (subscription.productId ? ' · ' + subscription.productId : '');
   body.querySelector('#plan-extra').textContent = extra;
@@ -953,6 +959,7 @@ window.addEventListener('message', function (event) {
     subscription.key = data.key || null;
     subscription.productId = data.productId || null;
     subscription.pending = !!data.pending;
+    subscription.localUnlock = !!data.localUnlock;
     if (data.address) {
       wallet.address = data.address;
       wallet.method = data.method;
