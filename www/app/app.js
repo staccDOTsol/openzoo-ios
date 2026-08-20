@@ -26,7 +26,10 @@ var $log = document.getElementById('log');
 var $threads = document.getElementById('threads');
 var $inp = document.getElementById('inp');
 var $model = document.getElementById('model');
+var $tier = document.getElementById('tierSel');
+var $race = document.getElementById('raceSel');
 var $chips = document.getElementById('attachChips');
+var catalogIds = [];
 var $plusMenu = document.getElementById('plusMenu');
 var $sidebar = document.getElementById('sidebar');
 var $scrim = document.getElementById('scrim');
@@ -62,6 +65,9 @@ function blankThread() {
     id: uid(),
     name: 'New chat',
     model: DEFAULT_MODEL,
+    tier: 'medium',
+    race: 0,
+    raceNeed: 1,
     messages: [],
     contextId: null,
     boundTurnCount: 0,
@@ -481,6 +487,22 @@ function renderHeader() {
   av.textContent = initials(t.name);
   av.style.background = avatarColor(t.id);
   if (t.model) $model.value = t.model;
+  var tier = OpenZooChatRace.normalizeTier(t.tier) || 'medium';
+  t.tier = tier;
+  if ($tier) {
+    $tier.value = tier;
+    $tier.className = (tier === 'expensive' || tier === 'grok4.6') ? 'dial hot' : 'dial';
+  }
+  var parsed = OpenZooChatRace.parseRaceValue(
+    (Number(t.raceNeed) > 1 ? String(t.raceNeed) + ' ' : '') + String(t.race || 0)
+  );
+  t.race = parsed.n;
+  t.raceNeed = parsed.k;
+  if ($race) {
+    $race.value = OpenZooChatRace.raceDialValue(parsed.n, parsed.k);
+    $race.className = parsed.n >= 2 ? 'dial hot' : 'dial';
+  }
+  if ($model) $model.disabled = parsed.n >= 2;
   renderHud();
 }
 
@@ -539,9 +561,16 @@ function addBubble(role, text, extra) {
   txt.textContent = text;
   bubble.appendChild(txt);
   row.appendChild(bubble);
+  var status = null;
+  if (extra.pending || extra.status) {
+    status = document.createElement('div');
+    status.className = 'meta';
+    status.textContent = extra.status || '';
+    row.appendChild(status);
+  }
   $log.appendChild(row);
   $log.scrollTop = $log.scrollHeight;
-  return { row: row, text: txt };
+  return { row: row, text: txt, status: status };
 }
 
 function renderLog() {
@@ -572,6 +601,7 @@ function loadModels() {
       return id && id.indexOf('~') !== 0 && id.indexOf(':batch') === -1;
     });
     if (ids.indexOf(DEFAULT_MODEL) === -1) ids.unshift(DEFAULT_MODEL);
+    catalogIds = ids.slice();
     $model.innerHTML = '';
     var seen = {};
     ids.forEach(function (id) {
@@ -768,6 +798,178 @@ function runTopup(parsed, live, accounts, wrappable) {
   });
 }
 
+function consumeSse(buf, onEvent) {
+  var parts = String(buf || '').split(/\r?\n\r?\n/);
+  var rest = parts.pop();
+  parts.forEach(function (block) {
+    var data = block.split(/\r?\n/).filter(function (line) {
+      return /^data:\s*/.test(line);
+    }).map(function (line) {
+      return line.replace(/^data:\s*/, '');
+    }).join('\n');
+    if (!data || data === '[DONE]') return;
+    try { onEvent(JSON.parse(data)); } catch (_) {}
+  });
+  return rest;
+}
+
+function extractChatReply(data) {
+  var choice = data && data.choices && data.choices[0];
+  var msg = choice && choice.message;
+  var delta = choice && choice.delta;
+  return (msg && msg.content) || (delta && delta.content) || '';
+}
+
+function readSseReply(res, onDelta) {
+  var decoder = new TextDecoder();
+  var buf = '';
+  var reply = '';
+  var last = null;
+  var reader = res.body && res.body.getReader && res.body.getReader();
+
+  function take(obj) {
+    last = obj;
+    var choice = obj && obj.choices && obj.choices[0];
+    var delta = choice && (choice.delta || choice.message);
+    var chunk = delta && delta.content;
+    if (chunk) {
+      reply += chunk;
+      if (onDelta) onDelta(chunk);
+    }
+  }
+
+  if (!reader) {
+    return res.text().then(function (text) {
+      consumeSse(text, take);
+      if (!reply) {
+        try {
+          var data = JSON.parse(text);
+          last = data;
+          reply = extractChatReply(data);
+          if (reply && onDelta) onDelta(reply);
+        } catch (_) {}
+      }
+      return { res: res, data: last, reply: reply };
+    });
+  }
+
+  function pump() {
+    return reader.read().then(function (part) {
+      if (part.done) {
+        if (buf) consumeSse(buf + '\n\n', take);
+        return { res: res, data: last, reply: reply };
+      }
+      buf += decoder.decode(part.value, { stream: true });
+      buf = consumeSse(buf, take);
+      return pump();
+    });
+  }
+  return pump();
+}
+
+function raceJudge(prompt, maxTokens) {
+  return api('/v1/chat/completions', {
+    method: 'POST',
+    body: {
+      model: OpenZooChatRace.JUDGE_MODEL,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: maxTokens || 24
+    }
+  }).then(function (out) {
+    if (!out.res.ok) return '';
+    return extractChatReply(out.data) || '';
+  }).catch(function () {
+    return '';
+  });
+}
+
+function streamRacer(req, model, payment, onDelta, signal) {
+  var body = Object.assign({}, req.body, { model: model, stream: true });
+  var headers = Object.assign({
+    'Content-Type': 'application/json',
+    'Authorization': subscription.key ? ('Bearer ' + subscription.key) : 'openzoo-ios'
+  }, chatHeaders(req, payment));
+  return fetch(GATEWAY + '/v1/chat/completions', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(body),
+    signal: signal
+  }).then(function (res) {
+    var ctype = '';
+    try { ctype = String(res.headers.get('content-type') || '').toLowerCase(); } catch (_) {}
+    if (res.status === 402) {
+      var payErr = new Error('payment failed — HTTP 402');
+      payErr.status = 402;
+      throw payErr;
+    }
+    if (res.ok && ctype.indexOf('application/json') === -1) {
+      return readSseReply(res, onDelta).then(function (out) {
+        rememberThreadContext(activeThread(), out);
+        noteChatReceipt(out.data);
+        if (!out.reply) {
+          var empty = new Error('empty body');
+          empty.status = res.status;
+          throw empty;
+        }
+        return out.reply;
+      });
+    }
+    return res.text().then(function (text) {
+      var data = null;
+      if (text) {
+        try { data = JSON.parse(text); } catch (_) { data = text; }
+      }
+      if (typeof data === 'string' && /(?:^|\n)data:\s*/.test(data)) {
+        var replySse = '';
+        var lastSse = null;
+        consumeSse(data + '\n\n', function (obj) {
+          lastSse = obj;
+          var choice = obj && obj.choices && obj.choices[0];
+          var delta = choice && (choice.delta || choice.message);
+          var chunk = delta && delta.content;
+          if (chunk) {
+            replySse += chunk;
+            if (onDelta) onDelta(chunk);
+          }
+        });
+        if (replySse) {
+          rememberThreadContext(activeThread(), { res: res, data: lastSse });
+          noteChatReceipt(lastSse);
+          return replySse;
+        }
+      }
+      if (isContextMissing(data, res.status)) {
+        var missing = new Error('context_not_found');
+        missing.status = res.status;
+        missing.contextMissing = true;
+        throw missing;
+      }
+      if (!res.ok) {
+        var httpErr = new Error(typeof data === 'string' && data
+          ? data
+          : ('HTTP ' + res.status));
+        httpErr.status = res.status;
+        throw httpErr;
+      }
+      rememberThreadContext(activeThread(), { res: res, data: data });
+      noteChatReceipt(data);
+      var reply = extractChatReply(data);
+      if (reply && onDelta) onDelta(reply);
+      return reply || '';
+    });
+  }).catch(function (err) {
+    if (err && err.name === 'AbortError') throw err;
+    if (err && (err.contextMissing || err.status === 402)) throw err;
+    var raw = OpenZooUserErrors.rawMessage(err);
+    if (/fetch failed|failed to fetch|load failed|networkerror/i.test(raw)) {
+      var fail = new TypeError('fetch failed');
+      fail.status = err && err.status;
+      throw fail;
+    }
+    throw err;
+  });
+}
+
 function sendChat(userText, payment, opts) {
   opts = opts || {};
   var thread = activeThread();
@@ -793,6 +995,74 @@ function sendChat(userText, payment, opts) {
       turns: turns,
       contextId: opts.forceFull ? null : thread.contextId
     });
+    var raceSpec = OpenZooChatRace.parseRaceValue(
+      (Number(thread.raceNeed) > 1 ? String(thread.raceNeed) + ' ' : '') + String(thread.race || 0)
+    );
+    if (raceSpec.n >= 2) {
+      var models = OpenZooChatRace.tierModels(
+        thread.tier || 'medium',
+        raceSpec.n,
+        true,
+        catalogIds
+      );
+      if (models.length < 2) {
+        req.body.model = models[0] || req.body.model;
+      } else {
+      var liveText = '';
+      var contextLost = false;
+      var paintStatus = function (s) {
+        if (thinking.status) thinking.status.textContent = s || '';
+        if (!liveText) thinking.text.textContent = s || '…';
+        $log.scrollTop = $log.scrollHeight;
+      };
+      var paintDelta = function (chunk, meta) {
+        meta = meta || {};
+        if (meta.replace) liveText = String(chunk || '');
+        else liveText += String(chunk || '');
+        thinking.row.classList.remove('pending');
+        thinking.text.textContent = liveText || '…';
+        $log.scrollTop = $log.scrollHeight;
+      };
+      paintStatus(OpenZooChatRace.formatRaceStatus(0, raceSpec.k));
+      return OpenZooChatRace.brainRace(
+        req.body.messages,
+        paintDelta,
+        req.contextId,
+        models,
+        raceSpec.k,
+        undefined,
+        paintStatus,
+        {
+          stream: function (messages, onDelta, ctx, model, maxTokens, signal) {
+            return streamRacer(req, model, payment, onDelta, signal).catch(function (err) {
+              if (err && err.contextMissing) contextLost = true;
+              throw err;
+            });
+          },
+          judge: raceJudge
+        }
+      ).then(function (reply) {
+        if (contextLost && !opts.retry && (!reply || reply === OpenZooChatRace.RACE_EVERY_FAILED)) {
+          thread.contextId = null;
+          thread.boundTurnCount = 0;
+          saveThreads();
+          thinking.row.remove();
+          return sendChat(userText, payment, { retry: true, forceFull: true });
+        }
+        var text = String(reply || '').trim() || OpenZooChatRace.RACE_EVERY_FAILED;
+        var failed = text === OpenZooChatRace.RACE_EVERY_FAILED || !OpenZooChatRace.isRaceCountable(text);
+        thinking.row.classList.remove('pending');
+        if (failed) thinking.row.classList.add('err');
+        thinking.text.textContent = text;
+        if (thinking.status) thinking.status.textContent = '';
+        thread.messages.push({ role: 'assistant', content: text, err: !!failed });
+        thread.updatedAt = Date.now();
+        saveThreads();
+        renderSidebar();
+        if (!failed) OpenZooPay402.clear();
+      });
+      }
+    }
     return api('/v1/chat/completions', {
       method: 'POST',
       headers: chatHeaders(req, payment),
@@ -1010,6 +1280,20 @@ $inp.addEventListener('input', function () {
 $model.addEventListener('change', function () {
   activeThread().model = $model.value;
   saveThreads();
+});
+if ($tier) $tier.addEventListener('change', function () {
+  var t = activeThread();
+  t.tier = OpenZooChatRace.normalizeTier($tier.value) || 'medium';
+  saveThreads();
+  renderHeader();
+});
+if ($race) $race.addEventListener('change', function () {
+  var t = activeThread();
+  var parsed = OpenZooChatRace.parseRaceValue($race.value);
+  t.race = parsed.n;
+  t.raceNeed = parsed.k;
+  saveThreads();
+  renderHeader();
 });
 document.getElementById('hud-btn').onclick = function (ev) {
   ev.stopPropagation();

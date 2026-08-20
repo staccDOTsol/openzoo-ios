@@ -52,14 +52,14 @@ body {
   padding: 10px 12px;
   padding-top: max(10px, env(safe-area-inset-top));
   border-bottom: 1px solid #1c1c1e;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
 }
 #chatHeaderId { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
 #chatHeaderId .tavatar { width: 26px; height: 26px; border-radius: 7px; font-size: 11px; flex: 0 0 26px; }
 .hname { min-width: 0; overflow: hidden; }
 .hname > div:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .hdir { font-size: 11px; color: #8e8e93; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#headerDials { display: flex; align-items: center; gap: 6px; }
+#headerDials { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: flex-end; }
 #hud {
   display: none; position: absolute; top: 58px; right: 14px; z-index: 12;
   width: 240px; background: rgba(14,14,17,.94);
@@ -77,6 +77,8 @@ body {
   font: inherit; font-size: 11px; border-radius: 999px; padding: 4px 8px;
   max-width: 120px;
 }
+.dial.hot { color: #f28c4d; border-color: #f28c4d; }
+.dial:disabled { opacity: .4; }
 .icon-btn {
   width: 32px; height: 32px; border-radius: 50%; border: none;
   background: transparent; color: #ececec;

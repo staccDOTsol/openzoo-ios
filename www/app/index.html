@@ -39,6 +39,26 @@
       </div>
       <div id="headerDials">
         <button class="dial" id="header-new-chat" type="button">New chat</button>
+        <select class="dial" id="tierSel" aria-label="Model tier" title="How much to spend per turn when racing">
+          <option value="cheap">cheap</option>
+          <option value="medium" selected>medium</option>
+          <option value="expensive">expensive</option>
+          <option value="grok4.6">grok 4.6</option>
+        </select>
+        <select class="dial" id="raceSel" aria-label="Race models" title="Ask N models from the tier at once. First countable answers are judged. You pay for every entrant.">
+          <option value="0" selected>1 model</option>
+          <optgroup label="first back wins">
+            <option value="2">race 2</option>
+            <option value="3">race 3</option>
+            <option value="4">race 4</option>
+          </optgroup>
+          <optgroup label="judge the first k back">
+            <option value="2 3">best 2 of 3</option>
+            <option value="2 4">best 2 of 4</option>
+            <option value="3 4">best 3 of 4</option>
+            <option value="4 4">best 4 of 4</option>
+          </optgroup>
+        </select>
         <select class="dial" id="model" aria-label="Model"></select>
         <button class="dial" id="hud-btn" type="button" aria-label="Savings">◎</button>
         <button class="dial" id="plan-btn" type="button">plan</button>
@@ -112,6 +132,7 @@
   <script src="../js/user-errors.js"></script>
   <script src="../js/pay402.js"></script>
   <script src="../js/chat-spill.js"></script>
+  <script src="../js/chat-race.js"></script>
   <script src="../js/clipboard.js"></script>
   <script src="../js/billing.js"></script>
   <script src="../js/rails.js"></script>
