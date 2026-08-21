@@ -70,8 +70,11 @@ assert.ok(/testFlight/.test(pluginJs));
 
 const app = fs.readFileSync(path.join(__dirname, '../www/app/app.js'), 'utf8');
 assert.ok(app.indexOf("var GATEWAY = 'https://x402-tokens.fly.dev'") !== -1);
+assert.ok(app.indexOf('OpenZooOcc.sendMessage') !== -1);
 assert.ok(app.indexOf('OpenZooChatSpill.buildChatRequest') !== -1);
 assert.ok(app.indexOf('OpenZooChatRace.brainRace') !== -1);
+assert.ok(app.indexOf('ANTHROPIC_API_KEY') === -1);
+assert.ok(app.indexOf('parseRun') === -1);
 assert.ok(!/\bSPAWN\b|\bworktree|\bPING:/.test(app));
 assert.ok(app.indexOf('podagent') === -1);
 const chromeReadyAt = app.indexOf("type: 'openzoo-chrome-ready'");
@@ -83,7 +86,10 @@ assert.ok(app.lastIndexOf('renderHeader();') < chromeReadyAt);
 
 const chatHtml = fs.readFileSync(path.join(__dirname, '../www/app/index.html'), 'utf8');
 assert.ok(chatHtml.indexOf('js/chat-race.js') !== -1);
+assert.ok(chatHtml.indexOf('js/occ.js') !== -1);
 assert.ok(chatHtml.indexOf('id="raceSel"') !== -1);
+assert.ok(chatHtml.indexOf('id="modeToggle"') !== -1);
+assert.ok(chatHtml.indexOf('id="modeAgent"') !== -1);
 assert.ok(chatHtml.indexOf('value="2 4"') !== -1);
 
 const shell = fs.readFileSync(path.join(__dirname, '../www/index.html'), 'utf8');

@@ -39,6 +39,13 @@
       </div>
       <div id="headerDials">
         <button class="dial" id="header-new-chat" type="button">New chat</button>
+        <div id="modeToggle" data-component="run-mode-toggle" role="group" aria-label="Chat or Agent mode">
+          <button class="modebtn chat on" id="modeChat" data-mode="chat" type="button"
+                  title="Chat completions. Files bind into this chat.">Chat</button>
+          <button class="modebtn agent" id="modeAgent" data-mode="agent" type="button"
+                  title="Hosted OCC — long-running Agent. Needs a subscription key.">Agent</button>
+        </div>
+        <button class="dial hidden" id="actStop" type="button" title="Interrupt the Agent">Stop</button>
         <select class="dial" id="tierSel" aria-label="Model tier" title="How much to spend per turn when racing">
           <option value="cheap">cheap</option>
           <option value="medium" selected>medium</option>
@@ -86,6 +93,7 @@
       <input id="photo-inp" type="file" accept="image/*" multiple hidden>
       <input id="folder-inp" type="file" webkitdirectory multiple hidden>
       <div id="attachChips"></div>
+      <div id="goalTip" class="hidden">Pro tip: /goal &lt;job&gt; — one slash. Agent keeps working until it's done.</div>
       <div id="row-input">
         <div id="pill">
           <button class="icon-btn" id="plus-btn" type="button" aria-label="Attach">
@@ -133,6 +141,7 @@
   <script src="../js/pay402.js"></script>
   <script src="../js/chat-spill.js"></script>
   <script src="../js/chat-race.js"></script>
+  <script src="../js/occ.js"></script>
   <script src="../js/clipboard.js"></script>
   <script src="../js/billing.js"></script>
   <script src="../js/rails.js"></script>
