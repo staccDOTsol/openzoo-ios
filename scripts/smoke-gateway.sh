@@ -29,7 +29,10 @@ if not isinstance(rows, list) or not rows:
     raise SystemExit("models: expected a non-empty data list")
 ids = [row.get("id") for row in rows if isinstance(row, dict)]
 print("models: valid JSON, count=%d" % len(ids))
-print("default openai/gpt-4o-mini present:", "openai/gpt-4o-mini" in ids)
+print("openzoo/auto present:", "openzoo/auto" in ids)
+print("named openai/gpt-4o-mini present:", "openai/gpt-4o-mini" in ids)
+if "openzoo/auto" not in ids:
+    raise SystemExit("models: openzoo/auto was not in the live list")
 if "openai/gpt-4o-mini" not in ids:
     raise SystemExit("models: openai/gpt-4o-mini was not in the live list")
 PY
