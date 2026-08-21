@@ -55,7 +55,7 @@
 
   function buildChatRequest(opts) {
     opts = opts || {};
-    var model = opts.model || 'openai/gpt-4o-mini';
+    var model = opts.model || 'openzoo/auto';
     var system = opts.system || SYSTEM;
     var turns = conversationTurns(opts.turns || opts.messages || []);
     var contextId = opts.contextId || null;

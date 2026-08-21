@@ -1,7 +1,7 @@
 'use strict';
 
 var GATEWAY = 'https://x402-tokens.fly.dev';
-var DEFAULT_MODEL = 'openai/gpt-4o-mini';
+var DEFAULT_MODEL = OpenZooChatModel.DEFAULT_MODEL;
 var STORE_KEY = 'openzoo.ios.threads.v1';
 var TEXT_EXTS = {
   '.txt': 1, '.md': 1, '.json': 1, '.jsonl': 1, '.csv': 1, '.tsv': 1, '.log': 1,
@@ -486,12 +486,21 @@ function renderHeader() {
   var av = document.getElementById('header-avatar');
   av.textContent = initials(t.name);
   av.style.background = avatarColor(t.id);
-  if (t.model) $model.value = t.model;
+  var selected = OpenZooChatModel.resolveChatModel(t.model || $model.value || DEFAULT_MODEL);
+  if ($model) {
+    $model.value = selected;
+    $model.disabled = false;
+  }
+  var auto = OpenZooChatModel.isAutoModel(selected);
   var tier = OpenZooChatRace.normalizeTier(t.tier) || 'medium';
   t.tier = tier;
   if ($tier) {
     $tier.value = tier;
-    $tier.className = (tier === 'expensive' || tier === 'grok4.6') ? 'dial hot' : 'dial';
+    $tier.disabled = auto;
+    $tier.className = (!auto && (tier === 'expensive' || tier === 'grok4.6')) ? 'dial hot' : 'dial';
+    $tier.title = auto
+      ? 'Auto is one server-side pick. Tier is for racing named models.'
+      : 'How much to spend per turn when racing';
   }
   var parsed = OpenZooChatRace.parseRaceValue(
     (Number(t.raceNeed) > 1 ? String(t.raceNeed) + ' ' : '') + String(t.race || 0)
@@ -499,10 +508,19 @@ function renderHeader() {
   t.race = parsed.n;
   t.raceNeed = parsed.k;
   if ($race) {
-    $race.value = OpenZooChatRace.raceDialValue(parsed.n, parsed.k);
-    $race.className = parsed.n >= 2 ? 'dial hot' : 'dial';
+    if (auto) {
+      $race.value = '0';
+      $race.disabled = true;
+      $race.className = 'dial';
+      $race.title = 'Auto is one server-side pick — the door classifies. Race is for named models.';
+    } else {
+      $race.value = OpenZooChatRace.raceDialValue(parsed.n, parsed.k);
+      $race.disabled = false;
+      $race.className = parsed.n >= 2 ? 'dial hot' : 'dial';
+      $race.title = 'Ask N models from the tier at once. First countable answers are judged. You pay for every entrant.';
+    }
   }
-  if ($model) $model.disabled = parsed.n >= 2;
+  if ($model) $model.disabled = !auto && parsed.n >= 2;
   renderHud();
 }
 
@@ -594,31 +612,26 @@ function closeSidebar() {
   $scrim.classList.remove('show');
 }
 
+function fillModelPicker(catalog, selected) {
+  var rows = OpenZooChatModel.pickerOptions(catalog, selected);
+  $model.innerHTML = '';
+  rows.forEach(function (row) {
+    var opt = document.createElement('option');
+    opt.value = row.value;
+    opt.textContent = row.label;
+    if (row.selected) opt.selected = true;
+    $model.appendChild(opt);
+  });
+}
+
 function loadModels() {
+  fillModelPicker(catalogIds, activeThread().model || DEFAULT_MODEL);
   return api('/v1/models').then(function (out) {
     var rows = (out.data && out.data.data) || [];
-    var ids = rows.map(function (m) { return m.id; }).filter(function (id) {
-      return id && id.indexOf('~') !== 0 && id.indexOf(':batch') === -1;
-    });
-    if (ids.indexOf(DEFAULT_MODEL) === -1) ids.unshift(DEFAULT_MODEL);
-    catalogIds = ids.slice();
-    $model.innerHTML = '';
-    var seen = {};
-    ids.forEach(function (id) {
-      if (seen[id]) return;
-      seen[id] = true;
-      var opt = document.createElement('option');
-      opt.value = id;
-      opt.textContent = id;
-      if (id === (activeThread().model || DEFAULT_MODEL)) opt.selected = true;
-      $model.appendChild(opt);
-    });
+    catalogIds = OpenZooChatModel.catalogModelIds(rows);
+    fillModelPicker(catalogIds, activeThread().model || DEFAULT_MODEL);
   }).catch(function () {
-    $model.innerHTML = '';
-    var opt = document.createElement('option');
-    opt.value = DEFAULT_MODEL;
-    opt.textContent = DEFAULT_MODEL;
-    $model.appendChild(opt);
+    fillModelPicker(catalogIds, activeThread().model || DEFAULT_MODEL);
   });
 }
 
@@ -989,22 +1002,27 @@ function sendChat(userText, payment, opts) {
   var turns = OpenZooChatSpill.conversationTurns(thread.messages);
   var split = OpenZooChatSpill.splitPrefixTail(turns);
   return bindChatPrefix(thread, split).then(function () {
+    var selected = OpenZooChatModel.resolveChatModel(thread.model || $model.value || DEFAULT_MODEL);
+    thread.model = selected;
+    var raceSpec = OpenZooChatRace.parseRaceValue(
+      (Number(thread.raceNeed) > 1 ? String(thread.raceNeed) + ' ' : '') + String(thread.race || 0)
+    );
+    var tierModels = OpenZooChatModel.shouldRace(selected, raceSpec)
+      ? OpenZooChatRace.tierModels(thread.tier || 'medium', raceSpec.n, true, catalogIds)
+      : [];
+    var plan = OpenZooChatModel.planSend({
+      model: selected,
+      raceSpec: raceSpec,
+      tierModels: tierModels
+    });
     var req = OpenZooChatSpill.buildChatRequest({
-      model: $model.value || thread.model || DEFAULT_MODEL,
+      model: plan.model,
       system: OpenZooChatSpill.SYSTEM,
       turns: turns,
       contextId: opts.forceFull ? null : thread.contextId
     });
-    var raceSpec = OpenZooChatRace.parseRaceValue(
-      (Number(thread.raceNeed) > 1 ? String(thread.raceNeed) + ' ' : '') + String(thread.race || 0)
-    );
-    if (raceSpec.n >= 2) {
-      var models = OpenZooChatRace.tierModels(
-        thread.tier || 'medium',
-        raceSpec.n,
-        true,
-        catalogIds
-      );
+    if (plan.race) {
+      var models = plan.models;
       if (models.length < 2) {
         req.body.model = models[0] || req.body.model;
       } else {
@@ -1278,8 +1296,9 @@ $inp.addEventListener('input', function () {
   $inp.style.height = Math.min($inp.scrollHeight, 120) + 'px';
 });
 $model.addEventListener('change', function () {
-  activeThread().model = $model.value;
+  activeThread().model = OpenZooChatModel.resolveChatModel($model.value);
   saveThreads();
+  renderHeader();
 });
 if ($tier) $tier.addEventListener('change', function () {
   var t = activeThread();
@@ -1370,6 +1389,7 @@ document.addEventListener('visibilitychange', function () {
 });
 bindSelectionCopy();
 loadThreads();
+fillModelPicker(catalogIds, activeThread().model || DEFAULT_MODEL);
 renderSidebar();
 renderLog();
 renderHeader();
