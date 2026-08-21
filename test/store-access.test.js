@@ -75,7 +75,7 @@ assert.ok(app.indexOf('OpenZooOcc.sendMessage') === -1);
 assert.ok(app.indexOf('OpenZooChatSpill.buildChatRequest') !== -1);
 assert.ok(app.indexOf('OpenZooChatRace.brainRace') !== -1);
 assert.ok(app.indexOf('ANTHROPIC_API_KEY') === -1);
-assert.ok(app.indexOf('/ide/session') !== -1 || app.indexOf('OpenZooIde.openSession') !== -1);
+assert.ok(app.indexOf('/api/ide/session') !== -1 || app.indexOf('OpenZooIde.openSession') !== -1);
 assert.ok(app.indexOf('/api/occ') === -1);
 assert.ok(app.indexOf('parseRun') === -1);
 assert.ok(!/\bSPAWN\b|\bworktree|\bPING:/.test(app));

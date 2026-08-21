@@ -3,8 +3,8 @@
  * loads that URL in the existing webview / InAppBrowser. Same subscription
  * Bearer Chat already uses. Never ANTHROPIC_API_KEY. Never an open URL.
  *
- *   POST /ide/session  {} → { url, password?, id }
- *   GET  /ide/session      → same if a session is already running
+ *   POST /api/ide/session  {} → { url, password?, id }
+ *   GET  /api/ide/session      → same if a session is already running
  *
  * Hosted OCC /occ/sessions stays in the tree unused. Do not invent /api/occ.
  */
@@ -12,7 +12,7 @@
   'use strict';
 
   var IDE_ORIGIN = 'https://zoo.openzoo.fun';
-  var IDE_PATH = '/ide/session';
+  var IDE_PATH = '/api/ide/session';
   var NO_KEY = 'IDE_NO_KEY';
   var MISSING = 'IDE_MISSING';
   var REFUSED = 'IDE_REFUSED';

@@ -24,8 +24,8 @@ This tree started from [FreeSolDev/CordovaSeeker](https://github.com/FreeSolDev/
   - IAP (StoreKit) mints that key via `POST /api/billing/appstore`. Debug/sideload may use the `jarettrsdunn1999@gmail.com` bypass to enter the app; that bypass still does not mint a key, so Agent still refuses.
   - Store builds stay **IAP-only**. Agent does not open an in-app x402 pay.
   - Routes:
-    - `POST /ide/session` `{}` → `{ url, password?, id }`
-    - `GET /ide/session` → same if a session is already running
+    - `POST /api/ide/session` `{}` → `{ url, password?, id }`
+    - `GET /api/ide/session` → same if a session is already running
   - Load `url` full-bleed in `#agentFrame` (`viewport-fit=cover`, frame is 100% of the Agent pane). Chat composer stays hidden — no second composer over Cline. InAppBrowser is fallback only, with no toolbar / location bar.
   - `401` / `403` → Plan (subscribe / restore). HTML `404` → “cloud Agent not live yet”; Chat still works.
   - Hosted OCC `/occ/sessions` stays in `www/js/occ.js` unused. Do not invent `/api/occ`.
@@ -53,7 +53,7 @@ Create the three auto-renewable subscription products in App Store Connect with 
 npm test
 ```
 
-Parses the live `/supported` fixture (wTOKENx2 / wrap), the `/api/billing/tiers` fixture (prices + App Store product IDs + 404 stub for `/api/billing/appstore`), the unused hosted OCC client, and the cloud IDE client (`/ide/session`, Bearer required, no `ANTHROPIC_API_KEY`).
+Parses the live `/supported` fixture (wTOKENx2 / wrap), the `/api/billing/tiers` fixture (prices + App Store product IDs + 404 stub for `/api/billing/appstore`), the unused hosted OCC client, and the cloud IDE client (`/api/ide/session`, Bearer required, no `ANTHROPIC_API_KEY`).
 
 ## Layout
 
@@ -61,8 +61,8 @@ Parses the live `/supported` fixture (wTOKENx2 / wrap), the `/api/billing/tiers`
 www/index.html          App Store paywall (iframe host)
 www/app/                grokui-style chat / threads / attach
 www/js/billing.js       tiers + App Store key-exchange stub
-www/js/ide.js           cloud code-server + Cline session (`/ide/session`)
-www/js/occ.js           hosted OCC client (unused; Agent entry is /ide/session)
+www/js/ide.js           cloud code-server + Cline session (`/api/ide/session`)
+www/js/occ.js           hosted OCC client (unused; Agent entry is /api/ide/session)
 cordova-plugin-openzoo-store/   StoreKit 2
 cordova-plugin-openzoo-wallet/  Keychain + canOpenURL
 ```

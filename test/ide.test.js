@@ -7,14 +7,14 @@ const path = require('path');
 const ide = require('../www/js/ide.js');
 
 assert.strictEqual(ide.IDE_ORIGIN, 'https://zoo.openzoo.fun');
-assert.strictEqual(ide.IDE_PATH, '/ide/session');
-assert.strictEqual(ide.ideUrl(), 'https://zoo.openzoo.fun/ide/session');
-assert.strictEqual(ide.ideUrl('/ide/session'), 'https://zoo.openzoo.fun/ide/session');
-assert.throws(() => ide.ideUrl('https://evil.example/ide/session'), (err) => err.code === ide.OPEN_URL);
+assert.strictEqual(ide.IDE_PATH, '/api/ide/session');
+assert.strictEqual(ide.ideUrl(), 'https://zoo.openzoo.fun/api/ide/session');
+assert.strictEqual(ide.ideUrl('/api/ide/session'), 'https://zoo.openzoo.fun/api/ide/session');
+assert.throws(() => ide.ideUrl('https://evil.example/api/ide/session'), (err) => err.code === ide.OPEN_URL);
 {
   const ideSrc = fs.readFileSync(path.join(__dirname, '../www/js/ide.js'), 'utf8');
   assert.ok(!/['"`]\/api\/occ/.test(ideSrc));
-  assert.ok(ideSrc.indexOf("IDE_PATH = '/ide/session'") !== -1);
+  assert.ok(ideSrc.indexOf("IDE_PATH = '/api/ide/session'") !== -1);
 }
 
 {
@@ -23,7 +23,7 @@ assert.throws(() => ide.ideUrl('https://evil.example/ide/session'), (err) => err
   assert.ok(/delete headers\.ANTHROPIC_API_KEY/.test(src));
   assert.ok(src.indexOf('Authorization') !== -1);
   assert.ok(src.indexOf('Bearer ') !== -1);
-  assert.ok(src.indexOf('/ide/session') !== -1);
+  assert.ok(src.indexOf('/api/ide/session') !== -1);
   assert.ok(!/['"`]\/api\/occ/.test(src));
 }
 
@@ -80,7 +80,7 @@ function mockFetch(plan) {
 
 return ide.openSession('oz_key', mockFetch([
   {
-    url: 'https://zoo.openzoo.fun/ide/session',
+    url: 'https://zoo.openzoo.fun/api/ide/session',
     method: 'GET',
     status: 200,
     text: JSON.stringify({ url: 'https://zoo.openzoo.fun/ide/running', id: 'running' })
@@ -90,13 +90,13 @@ return ide.openSession('oz_key', mockFetch([
   assert.strictEqual(got.id, 'running');
   return ide.openSession('oz_key', mockFetch([
     {
-      url: 'https://zoo.openzoo.fun/ide/session',
+      url: 'https://zoo.openzoo.fun/api/ide/session',
       method: 'GET',
       status: 404,
       text: JSON.stringify({ error: 'no session' })
     },
     {
-      url: 'https://zoo.openzoo.fun/ide/session',
+      url: 'https://zoo.openzoo.fun/api/ide/session',
       method: 'POST',
       status: 200,
       text: JSON.stringify({ url: '/ide/new', password: 'secret', id: 'new-1' }),
@@ -109,7 +109,7 @@ return ide.openSession('oz_key', mockFetch([
   assert.strictEqual(created.id, 'new-1');
   return ide.openSession('oz_key', mockFetch([
     {
-      url: 'https://zoo.openzoo.fun/ide/session',
+      url: 'https://zoo.openzoo.fun/api/ide/session',
       method: 'GET',
       status: 404,
       text: '<!DOCTYPE html><html></html>'
@@ -123,7 +123,7 @@ return ide.openSession('oz_key', mockFetch([
   });
 }).then(() => ide.openSession('oz_key', mockFetch([
   {
-    url: 'https://zoo.openzoo.fun/ide/session',
+    url: 'https://zoo.openzoo.fun/api/ide/session',
     method: 'GET',
     status: 401,
     text: JSON.stringify({ error: 'no' })
@@ -138,7 +138,7 @@ return ide.openSession('oz_key', mockFetch([
   assert.strictEqual(err.code, ide.NO_KEY);
 })).then(() => ide.createSession('oz_key', mockFetch([
   {
-    url: 'https://zoo.openzoo.fun/ide/session',
+    url: 'https://zoo.openzoo.fun/api/ide/session',
     method: 'POST',
     status: 200,
     text: JSON.stringify({ url: 'https://evil.example/open' }),
@@ -189,7 +189,7 @@ return ide.openSession('oz_key', mockFetch([
   const app = fs.readFileSync(path.join(__dirname, '../www/app/app.js'), 'utf8');
   assert.ok(app.indexOf('OpenZooIde') !== -1);
   assert.ok(app.indexOf('openCloudAgent') !== -1);
-  assert.ok(app.indexOf('/ide/session') !== -1);
+  assert.ok(app.indexOf('/api/ide/session') !== -1);
   assert.ok(app.indexOf('OpenZooOcc.createSession') === -1);
   assert.ok(app.indexOf('OpenZooOcc.sendMessage') === -1);
   assert.ok(app.indexOf("var GATEWAY = 'https://x402-tokens.fly.dev'") !== -1);
@@ -220,13 +220,14 @@ return ide.openSession('oz_key', mockFetch([
   assert.ok(widget.indexOf('https://zoo.openzoo.fun/*') !== -1);
 
   const readme = fs.readFileSync(path.join(__dirname, '../README.md'), 'utf8');
-  assert.ok(readme.indexOf('/ide/session') !== -1);
+  assert.ok(readme.indexOf('/api/ide/session') !== -1);
+  assert.ok(readme.indexOf('POST /ide/session') === -1);
   assert.ok(readme.indexOf('ANTHROPIC_API_KEY') !== -1);
   assert.ok(/IAP|StoreKit|IAP-only|IAP only/.test(readme));
 
   console.log('ide: ok');
   console.log('  Bearer required; no key → no Agent');
-  console.log('  zoo.openzoo.fun/ide/session GET + POST');
+  console.log('  zoo.openzoo.fun/api/ide/session GET + POST');
   console.log('  load url full-bleed in iframe; IAB fallback has no toolbar');
 }).catch((err) => {
   console.error(err);

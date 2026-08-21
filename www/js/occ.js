@@ -1,5 +1,5 @@
 /* Hosted OCC client — kept in the tree unused. iOS Agent entry is
- * POST/GET /ide/session (cloud code-server + Cline) in www/js/ide.js.
+ * POST/GET /api/ide/session (cloud code-server + Cline) in www/js/ide.js.
  * Do not invent /api/occ. Never ANTHROPIC_API_KEY. Never an open URL.
  *
  * Assumed routes (zoo.openzoo.fun — same origin as /api/billing/tiers).

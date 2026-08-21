@@ -128,7 +128,7 @@ function agentNoKeyMessage() {
     return 'Your App Store purchase is saved. Agent waits until the zoo mints the subscription key.';
   }
   if (subscription.localUnlock) {
-    return 'This session is unlocked locally. Agent still needs a subscription key — we will not call /ide/session without one.';
+    return 'This session is unlocked locally. Agent still needs a subscription key — we will not call /api/ide/session without one.';
   }
   return 'Agent needs a subscription key. Open Plan to subscribe or restore on the App Store.';
 }
