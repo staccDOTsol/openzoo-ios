@@ -22,6 +22,7 @@ var pendingFiles = [];
 var busy = false;
 var directory = null;
 var agentCtl = null;
+var agentRef = null;
 
 var $log = document.getElementById('log');
 var $threads = document.getElementById('threads');
@@ -71,6 +72,8 @@ function blankThread() {
     raceNeed: 1,
     runMode: 'chat',
     occSessionId: null,
+    ideSessionId: null,
+    ideUrl: null,
     goalSet: false,
     messages: [],
     contextId: null,
@@ -125,9 +128,9 @@ function agentNoKeyMessage() {
     return 'Your App Store purchase is saved. Agent waits until the zoo mints the subscription key.';
   }
   if (subscription.localUnlock) {
-    return 'This session is unlocked locally. Agent still needs a subscription key — we will not call hosted OCC without one.';
+    return 'This session is unlocked locally. Agent still needs a subscription key — we will not call /api/ide/session without one.';
   }
-  return 'Agent needs a subscription key. Open Plan to subscribe on the App Store.';
+  return 'Agent needs a subscription key. Open Plan to subscribe or restore on the App Store.';
 }
 
 function setRunMode(mode, opts) {
@@ -135,13 +138,18 @@ function setRunMode(mode, opts) {
   var want = normalizeRunMode(mode);
   var t = activeThread();
   if (!t) return 'chat';
-  if (want === 'agent' && !OpenZooOcc.canAgent(subscription.key)) {
-    if (!opts.silent) addBubble('assistant', agentNoKeyMessage(), { err: true });
+  if (want === 'agent' && !OpenZooIde.canAgent(subscription.key)) {
+    if (!opts.silent) {
+      addBubble('assistant', agentNoKeyMessage(), { err: true });
+      showPlan();
+    }
     want = 'chat';
   }
   t.runMode = want;
   saveThreads();
   renderHeader();
+  if (want === 'agent') openCloudAgent(opts);
+  else hideCloudAgent();
   return want;
 }
 
@@ -427,58 +435,8 @@ function addPendingFiles(fileList) {
   return Promise.all(jobs).then(renderChips);
 }
 
-function ensureOccSession(thread) {
-  if (!OpenZooOcc.canAgent(subscription.key)) {
-    var err = new Error(agentNoKeyMessage());
-    err.code = OpenZooOcc.NO_KEY;
-    return Promise.reject(err);
-  }
-  if (thread.occSessionId) return Promise.resolve(thread.occSessionId);
-  return OpenZooOcc.createSession(subscription.key, {
-    threadId: thread.id,
-    name: thread.name
-  }).then(function (id) {
-    thread.occSessionId = id;
-    saveThreads();
-    return id;
-  });
-}
-
-function uploadAgentAttachments(thread) {
-  if (!pendingFiles.length) return Promise.resolve([]);
-  var items = pendingFiles.slice();
-  var names = items.map(function (f) { return f.name; });
-  var images = items.filter(function (f) { return f.kind === 'image'; });
-  thread.pendingImages = images.map(function (f) { return f.dataUrl; });
-  pendingFiles = [];
-  renderChips();
-  return ensureOccSession(thread).then(function (sid) {
-    var chain = Promise.resolve([]);
-    items.forEach(function (item) {
-      chain = chain.then(function (acc) {
-        return OpenZooOcc.uploadFile(subscription.key, sid, item).then(function (info) {
-          acc.push((info && (info.path || info.name)) || item.name);
-          return acc;
-        });
-      });
-    });
-    return chain;
-  }).then(function (uploaded) {
-    thread.usingLabel = uploaded.length
-      ? ('Using ' + uploaded.length + (uploaded.length === 1 ? ' file' : ' files') + ' in Agent')
-      : (names.length ? ('Using ' + names.length + (names.length === 1 ? ' file' : ' files')) : '');
-    saveThreads();
-    renderHeader();
-    return uploaded;
-  }).catch(function (err) {
-    pendingFiles = items.concat(pendingFiles);
-    renderChips();
-    throw err;
-  });
-}
-
 function consumeAttachments(thread) {
-  if (isAgentMode(thread)) return uploadAgentAttachments(thread);
+  if (isAgentMode(thread)) return Promise.resolve();
   if (!pendingFiles.length) return Promise.resolve();
   var texts = pendingFiles.filter(function (f) { return f.kind === 'text' && f.text; });
   var names = pendingFiles.map(function (f) { return f.name; });
@@ -602,10 +560,12 @@ function renderHeader() {
   if (chatBtn) chatBtn.classList.toggle('on', !agent);
   if (agentBtn) agentBtn.classList.toggle('on', agent);
   var tip = document.getElementById('goalTip');
-  if (tip) tip.classList.toggle('hidden', !agent);
+  if (tip) tip.classList.add('hidden');
   var stop = document.getElementById('actStop');
-  if (stop) stop.classList.toggle('hidden', !agent);
-  if ($inp) $inp.placeholder = agent ? 'Message Agent · /goal' : 'Message';
+  if (stop) stop.classList.add('hidden');
+  var bar = document.getElementById('bar');
+  if (bar) bar.classList.toggle('hidden', agent);
+  if ($inp) $inp.placeholder = 'Message';
   renderHud();
 }
 
@@ -629,6 +589,8 @@ function renderSidebar() {
       renderSidebar();
       renderLog();
       renderHeader();
+      if (isAgentMode(activeThread())) openCloudAgent({ silent: true });
+      else hideCloudAgent();
     };
     row.querySelector('.tclose').onclick = function (ev) {
       ev.stopPropagation();
@@ -639,6 +601,8 @@ function renderSidebar() {
       renderSidebar();
       renderLog();
       renderHeader();
+      if (isAgentMode(activeThread())) openCloudAgent({ silent: true });
+      else hideCloudAgent();
     };
     $threads.appendChild(row);
   });
@@ -681,7 +645,7 @@ function renderLog() {
   var t = activeThread();
   if (!t.messages.length) {
     addBubble('assistant', isAgentMode(t)
-      ? 'Agent talks to hosted OCC with your subscription key. Attach files into that session workspace — then send, including /goal.'
+      ? 'Agent opens cloud code-server + Cline with your subscription key. Chat stays on fly.dev completions.'
       : 'Welcome to the zoo. Attach files or photos if you want this chat to use them — then just talk.');
   }
   t.messages.forEach(function (m) {
@@ -1279,82 +1243,115 @@ function retryPending402() {
   });
 }
 
-function sendAgent(userText) {
-  var thread = activeThread();
-  if (!OpenZooOcc.canAgent(subscription.key)) {
-    addBubble('assistant', agentNoKeyMessage(), { err: true });
+function showAgentStatus(msg, err) {
+  var status = document.getElementById('agentStatus');
+  if (!status) return;
+  status.textContent = msg || '';
+  status.classList.toggle('err', !!err);
+  status.classList.toggle('hidden', !msg);
+  status.onclick = null;
+}
+
+function hideCloudAgent() {
+  var pane = document.getElementById('agentPane');
+  var frame = document.getElementById('agentFrame');
+  if (pane) pane.classList.add('hidden');
+  if (frame) {
+    try { frame.src = 'about:blank'; } catch (_) {}
+  }
+  if (agentRef) {
+    try { if (agentRef.close) agentRef.close(); } catch (_) {}
+    agentRef = null;
+  }
+  document.body.classList.remove('agent-live');
+  showAgentStatus('');
+}
+
+function openCloudAgent(opts) {
+  opts = opts || {};
+  if (!OpenZooIde.canAgent(subscription.key)) {
+    if (!opts.silent) {
+      addBubble('assistant', agentNoKeyMessage(), { err: true });
+      showPlan();
+    }
+    var locked = activeThread();
+    if (locked) locked.runMode = 'chat';
+    saveThreads();
+    hideCloudAgent();
+    renderHeader();
     return Promise.resolve();
   }
-  thread.messages.push({ role: 'user', content: userText });
-  if (thread.name === 'New chat') thread.name = userText.slice(0, 32);
-  if (/^\/goal\b/i.test(userText)) thread.goalSet = true;
-  thread.updatedAt = Date.now();
-  saveThreads();
-  renderSidebar();
-  renderHeader();
-  addBubble('user', userText, { images: thread.pendingImages || [] });
-  thread.pendingImages = null;
-  var thinking = addBubble('assistant', '…', { pending: true, status: 'Agent' });
-  var live = '';
-  var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  agentCtl = ctl;
-  return ensureOccSession(thread).then(function (sid) {
-    return OpenZooOcc.sendMessage(subscription.key, sid, userText, function (ev) {
-      if (ev && ev.sessionId && ev.sessionId !== thread.occSessionId) {
-        thread.occSessionId = ev.sessionId;
-        saveThreads();
+  var pane = document.getElementById('agentPane');
+  if (pane) pane.classList.remove('hidden');
+  document.body.classList.add('agent-live');
+  showAgentStatus('Starting cloud Agent…');
+  return OpenZooIde.openSession(subscription.key).then(function (session) {
+    var loaded = OpenZooIde.loadSession(session, {
+      frame: document.getElementById('agentFrame')
+    });
+    if (loaded.ref) {
+      agentRef = loaded.ref;
+      if (agentRef.addEventListener) {
+        agentRef.addEventListener('exit', function () {
+          agentRef = null;
+          hideCloudAgent();
+          var t = activeThread();
+          if (t) t.runMode = 'chat';
+          saveThreads();
+          renderHeader();
+        });
       }
-      if (ev && ev.type === 'status' && thinking.status) {
-        thinking.status.textContent = ev.status || 'Agent';
-      }
-      if (ev && ev.type === 'error') {
-        thinking.row.classList.add('err');
-        thinking.text.textContent = String(ev.error || 'Agent error');
-      }
-      if (ev && ev.text) {
-        if (ev.replace) live = String(ev.text);
-        else live += String(ev.text);
-        thinking.row.classList.remove('pending');
-        thinking.text.textContent = live || '…';
-        $log.scrollTop = $log.scrollHeight;
-      }
-    }, { signal: ctl && ctl.signal });
-  }).then(function (out) {
-    if (out && out.sessionId) {
-      thread.occSessionId = out.sessionId;
     }
-    var text = String((out && out.reply) || live || '').trim() || 'Agent finished without text.';
-    thinking.row.classList.remove('pending');
-    thinking.text.textContent = text;
-    if (thinking.status) thinking.status.textContent = '';
-    thread.messages.push({ role: 'assistant', content: text });
-    thread.updatedAt = Date.now();
-    saveThreads();
-    renderSidebar();
-  }).catch(function (err) {
-    if (err && err.name === 'AbortError') {
-      thinking.row.classList.remove('pending');
-      var stopped = (live || '').trim() || 'Agent stopped.';
-      thinking.text.textContent = stopped;
-      thread.messages.push({ role: 'assistant', content: stopped });
+    var thread = activeThread();
+    if (thread) {
+      thread.ideSessionId = session.id || thread.ideSessionId;
+      thread.ideUrl = session.url;
       saveThreads();
+    }
+    showAgentStatus('');
+    if (session.password) {
+      copyValue(session.password).catch(function () {});
+    }
+  }).catch(function (err) {
+    hideCloudAgent();
+    var t = activeThread();
+    if (t) t.runMode = 'chat';
+    saveThreads();
+    renderHeader();
+    if (err && err.code === OpenZooIde.REFUSED) {
+      if (!opts.silent) addBubble('assistant', err.message, { err: true });
+      showPlan();
       return;
     }
-    thinking.row.classList.add('err');
-    thinking.text.textContent = userFacingPayError(err);
-  }).then(function () {
-    if (agentCtl === ctl) agentCtl = null;
+    if (err && err.code === OpenZooIde.MISSING) {
+      if (!opts.silent) addBubble('assistant', OpenZooIde.NOT_LIVE, { err: true });
+      return;
+    }
+    if (err && err.code === OpenZooIde.NO_KEY) {
+      if (!opts.silent) {
+        addBubble('assistant', agentNoKeyMessage(), { err: true });
+        showPlan();
+      }
+      return;
+    }
+    if (!opts.silent) addBubble('assistant', userFacingPayError(err), { err: true });
   });
 }
 
+function sendAgent() {
+  return openCloudAgent();
+}
+
 function stopAgent() {
-  var thread = activeThread();
   if (agentCtl) {
     try { agentCtl.abort(); } catch (_) {}
+    agentCtl = null;
   }
-  if (thread && thread.occSessionId && OpenZooOcc.canAgent(subscription.key)) {
-    OpenZooOcc.stop(subscription.key, thread.occSessionId).catch(function () {});
-  }
+  hideCloudAgent();
+  var thread = activeThread();
+  if (thread) thread.runMode = 'chat';
+  saveThreads();
+  renderHeader();
 }
 
 function submit() {
@@ -1369,7 +1366,7 @@ function submit() {
     thread.messages.push({ role: 'user', content: text });
     var next = setRunMode(want);
     addBubble('assistant', next === 'agent'
-      ? 'Run mode set to agent — hosted OCC. Type /goal to keep it working.'
+      ? 'Run mode set to agent — cloud code-server + Cline.'
       : 'Run mode set to chat — completions.');
     saveThreads();
     return;
@@ -1381,7 +1378,7 @@ function submit() {
     if (!text) return;
     $inp.value = '';
     $inp.style.height = 'auto';
-    if (isAgentMode(thread)) return sendAgent(text);
+    if (isAgentMode(thread)) return;
     return sendChat(text);
   }).catch(function (err) {
     addBubble('assistant', userFacingPayError(err), { err: true });
@@ -1428,6 +1425,7 @@ function startNewChat() {
   activeId = t.id;
   saveThreads();
   closeSidebar();
+  hideCloudAgent();
   renderSidebar();
   renderLog();
   renderHeader();
@@ -1542,8 +1540,12 @@ window.addEventListener('message', function (event) {
     subscription.productId = data.productId || null;
     subscription.pending = !!data.pending;
     subscription.localUnlock = !!data.localUnlock;
-    if (isAgentMode(activeThread()) && !OpenZooOcc.canAgent(subscription.key)) {
-      setRunMode('chat', { silent: true });
+    if (isAgentMode(activeThread())) {
+      if (!OpenZooIde.canAgent(subscription.key)) {
+        setRunMode('chat', { silent: true });
+      } else {
+        openCloudAgent({ silent: true });
+      }
     }
     if (data.address) {
       wallet.address = data.address;
