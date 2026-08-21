@@ -1,7 +1,6 @@
-/* Hosted OCC for iOS Agent. Desktop grokui runs openzoo-claude on a local
- * PTY; this app cannot. Agent talks to the zoo OCC door with the same
- * subscription Bearer Chat already uses. Never ANTHROPIC_API_KEY. Never an
- * unauthenticated OCC URL.
+/* Hosted OCC client — kept in the tree unused. iOS Agent entry is
+ * POST/GET /ide/session (cloud code-server + Cline) in www/js/ide.js.
+ * Do not invent /api/occ. Never ANTHROPIC_API_KEY. Never an open URL.
  *
  * Assumed routes (zoo.openzoo.fun — same origin as /api/billing/tiers).
  * Hosted OCC was not on the live site when this client shipped; align the

@@ -13,7 +13,7 @@
     "requirements": "cordova requirements ios",
     "ios": "cordova platform add ios && cordova build ios",
     "smoke": "bash scripts/smoke-gateway.sh",
-    "test": "node test/supported-rails.test.js && node test/billing-tiers.test.js && node test/store-access.test.js && node test/chat-spill.test.js && node test/chat-race.test.js && node test/occ.test.js"
+    "test": "node test/supported-rails.test.js && node test/billing-tiers.test.js && node test/store-access.test.js && node test/chat-spill.test.js && node test/chat-race.test.js && node test/occ.test.js && node test/ide.test.js"
   },
   "keywords": [
     "ecosystem:cordova",

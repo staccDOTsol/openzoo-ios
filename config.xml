@@ -10,6 +10,8 @@
     <content src="index.html" />
 
     <access origin="https://zoo.openzoo.fun" />
+    <allow-navigation href="https://zoo.openzoo.fun/*" />
+    <allow-navigation href="https://*.openzoo.fun/*" />
     <access origin="https://x402-tokens.fly.dev" />
     <access origin="https://x402.accrue.fund" />
     <access origin="https://api.mainnet-beta.solana.com" />

@@ -18,17 +18,17 @@ This tree started from [FreeSolDev/CordovaSeeker](https://github.com/FreeSolDev/
 - Wallet / x402 wrap still exists under **Plan → Advanced** for later. Not first-run.
 - Bind is one attach action (photos / files / folder / paste). The UI does not show context ids or bind paths.
 - **Chat** still hits `POST https://x402-tokens.fly.dev/v1/chat/completions` (spill + bind + race). That path is unchanged.
-- **Agent** cannot run `openzoo-claude` on a phone. It talks to **hosted OCC** on the same zoo origin this app already uses for billing:
-  - Origin: `https://zoo.openzoo.fun` (not an open / unauthenticated OCC URL)
-  - Every OCC/upload call: `Authorization: Bearer <subscription key>`. No key → no Agent. Never `ANTHROPIC_API_KEY`.
-  - IAP (StoreKit) mints that key via `POST /api/billing/appstore`. Debug/sideload may use the `jarettrsdunn1999@gmail.com` bypass to enter the app; Agent still refuses without a key.
-  - Store builds stay IAP-only. Agent does not open an in-app x402 pay.
-  - Assumed routes (hosted OCC was not merged on the site when this client shipped — align the server to these or change `www/js/occ.js`):
-    - `POST /occ/sessions` → `{ id }`
-    - `POST /occ/sessions/:id/messages` (SSE) — body `{ text, message, stream: true }` including `/goal`
-    - `POST /occ/sessions/:id/files` — multipart `file` or JSON `{ name, content, encoding }`
-    - `POST /occ/sessions/:id/stop`
-  - Streamed OCC output paints the existing chat bubble (OCC/OpenAI SSE, optional PTY payload). Not a fake `RUN:` parser.
+- **Agent** is **cloud code-server + Cline**, not a hosted OCC PTY and not something this phone runs locally:
+  - Door: `https://zoo.openzoo.fun` (never an open / unauthenticated URL)
+  - Every IDE call: `Authorization: Bearer <subscription key>`. No key → no Agent. Never `ANTHROPIC_API_KEY`.
+  - IAP (StoreKit) mints that key via `POST /api/billing/appstore`. Debug/sideload may use the `jarettrsdunn1999@gmail.com` bypass to enter the app; that bypass still does not mint a key, so Agent still refuses.
+  - Store builds stay **IAP-only**. Agent does not open an in-app x402 pay.
+  - Routes:
+    - `POST /ide/session` `{}` → `{ url, password?, id }`
+    - `GET /ide/session` → same if a session is already running
+  - Load `url` in the existing Agent webview/iframe (InAppBrowser if present, otherwise `#agentFrame`).
+  - `401` / `403` → Plan (subscribe / restore). HTML `404` → “cloud Agent not live yet”; Chat still works.
+  - Hosted OCC `/occ/sessions` stays in `www/js/occ.js` unused. Do not invent `/api/occ`.
 
 Live web copy (do not invent prices): Basic $9/mo, Pro $29/mo (Most teams want this), Ultra $99/mo. `trialDays` is 0 (`runway_floor`). Usage invoices at $1.00.
 
@@ -53,7 +53,7 @@ Create the three auto-renewable subscription products in App Store Connect with 
 npm test
 ```
 
-Parses the live `/supported` fixture (wTOKENx2 / wrap), the `/api/billing/tiers` fixture (prices + App Store product IDs + 404 stub for `/api/billing/appstore`), and the hosted OCC client (Bearer required, SSE paint, no `ANTHROPIC_API_KEY`).
+Parses the live `/supported` fixture (wTOKENx2 / wrap), the `/api/billing/tiers` fixture (prices + App Store product IDs + 404 stub for `/api/billing/appstore`), the unused hosted OCC client, and the cloud IDE client (`/ide/session`, Bearer required, no `ANTHROPIC_API_KEY`).
 
 ## Layout
 
@@ -61,7 +61,8 @@ Parses the live `/supported` fixture (wTOKENx2 / wrap), the `/api/billing/tiers`
 www/index.html          App Store paywall (iframe host)
 www/app/                grokui-style chat / threads / attach
 www/js/billing.js       tiers + App Store key-exchange stub
-www/js/occ.js           hosted OCC client (Bearer subscription key)
+www/js/ide.js           cloud code-server + Cline session (`/ide/session`)
+www/js/occ.js           hosted OCC client (unused; Agent entry is /ide/session)
 cordova-plugin-openzoo-store/   StoreKit 2
 cordova-plugin-openzoo-wallet/  Keychain + canOpenURL
 ```

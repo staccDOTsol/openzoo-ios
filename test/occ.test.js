@@ -156,12 +156,15 @@ return occ.createSession('oz_key', { threadId: 't-1' }, mockFetch([
   assert.ok(!/parseRun|RUN:\s*\$|function parseRun/.test(src));
 
   const app = fs.readFileSync(path.join(__dirname, '../www/app/app.js'), 'utf8');
-  assert.ok(app.indexOf('OpenZooOcc') !== -1);
-  assert.ok(app.indexOf('sendAgent') !== -1);
+  assert.ok(app.indexOf('OpenZooIde') !== -1);
+  assert.ok(app.indexOf('openCloudAgent') !== -1);
+  assert.ok(app.indexOf('OpenZooOcc.createSession') === -1);
+  assert.ok(app.indexOf('OpenZooOcc.sendMessage') === -1);
   assert.ok(app.indexOf("var GATEWAY = 'https://x402-tokens.fly.dev'") !== -1);
   assert.ok(app.indexOf('OpenZooChatSpill.buildChatRequest') !== -1);
   assert.ok(app.indexOf('parseRun') === -1);
   assert.ok(app.indexOf('ANTHROPIC_API_KEY') === -1);
+  assert.ok(app.indexOf('/api/occ') === -1);
 
   const html = fs.readFileSync(path.join(__dirname, '../www/app/index.html'), 'utf8');
   assert.ok(html.indexOf('js/occ.js') !== -1);
