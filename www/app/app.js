@@ -21,6 +21,7 @@ var activeId = null;
 var pendingFiles = [];
 var busy = false;
 var directory = null;
+var agentCtl = null;
 
 var $log = document.getElementById('log');
 var $threads = document.getElementById('threads');
@@ -68,6 +69,9 @@ function blankThread() {
     tier: 'medium',
     race: 0,
     raceNeed: 1,
+    runMode: 'chat',
+    occSessionId: null,
+    goalSet: false,
     messages: [],
     contextId: null,
     boundTurnCount: 0,
@@ -103,6 +107,42 @@ function previewOf(thread) {
 
 function jsonText(value) {
   return JSON.stringify(value, null, 2);
+}
+
+function normalizeRunMode(s) {
+  var m = String(s || '').trim().toLowerCase();
+  if (m === 'agent' || m === 'auto') return 'agent';
+  if (m === 'chat' || m === 'ask') return 'chat';
+  return 'chat';
+}
+
+function isAgentMode(thread) {
+  return normalizeRunMode(thread && thread.runMode) === 'agent';
+}
+
+function agentNoKeyMessage() {
+  if (subscription.pending) {
+    return 'Your App Store purchase is saved. Agent waits until the zoo mints the subscription key.';
+  }
+  if (subscription.localUnlock) {
+    return 'This session is unlocked locally. Agent still needs a subscription key — we will not call hosted OCC without one.';
+  }
+  return 'Agent needs a subscription key. Open Plan to subscribe on the App Store.';
+}
+
+function setRunMode(mode, opts) {
+  opts = opts || {};
+  var want = normalizeRunMode(mode);
+  var t = activeThread();
+  if (!t) return 'chat';
+  if (want === 'agent' && !OpenZooOcc.canAgent(subscription.key)) {
+    if (!opts.silent) addBubble('assistant', agentNoKeyMessage(), { err: true });
+    want = 'chat';
+  }
+  t.runMode = want;
+  saveThreads();
+  renderHeader();
+  return want;
 }
 
 function isContextMissing(payload, status) {
@@ -368,7 +408,7 @@ function addPendingFiles(fileList) {
   var jobs = files.map(function (file) {
     if (file.type && file.type.indexOf('image/') === 0) {
       return readFileDataUrl(file).then(function (dataUrl) {
-        pendingFiles.push({ kind: 'image', name: file.name || 'photo', dataUrl: dataUrl });
+        pendingFiles.push({ kind: 'image', name: file.name || 'photo', dataUrl: dataUrl, file: file });
       });
     }
     if (isTextFile(file) || !file.type) {
@@ -376,17 +416,69 @@ function addPendingFiles(fileList) {
         pendingFiles.push({
           kind: 'text',
           name: file.name || 'note',
-          text: '===== ' + (file.name || 'note') + ' =====\n' + text
+          text: '===== ' + (file.name || 'note') + ' =====\n' + text,
+          file: file
         });
       });
     }
-    pendingFiles.push({ kind: 'file', name: file.name || 'file' });
+    pendingFiles.push({ kind: 'file', name: file.name || 'file', file: file });
     return Promise.resolve();
   });
   return Promise.all(jobs).then(renderChips);
 }
 
+function ensureOccSession(thread) {
+  if (!OpenZooOcc.canAgent(subscription.key)) {
+    var err = new Error(agentNoKeyMessage());
+    err.code = OpenZooOcc.NO_KEY;
+    return Promise.reject(err);
+  }
+  if (thread.occSessionId) return Promise.resolve(thread.occSessionId);
+  return OpenZooOcc.createSession(subscription.key, {
+    threadId: thread.id,
+    name: thread.name
+  }).then(function (id) {
+    thread.occSessionId = id;
+    saveThreads();
+    return id;
+  });
+}
+
+function uploadAgentAttachments(thread) {
+  if (!pendingFiles.length) return Promise.resolve([]);
+  var items = pendingFiles.slice();
+  var names = items.map(function (f) { return f.name; });
+  var images = items.filter(function (f) { return f.kind === 'image'; });
+  thread.pendingImages = images.map(function (f) { return f.dataUrl; });
+  pendingFiles = [];
+  renderChips();
+  return ensureOccSession(thread).then(function (sid) {
+    var chain = Promise.resolve([]);
+    items.forEach(function (item) {
+      chain = chain.then(function (acc) {
+        return OpenZooOcc.uploadFile(subscription.key, sid, item).then(function (info) {
+          acc.push((info && (info.path || info.name)) || item.name);
+          return acc;
+        });
+      });
+    });
+    return chain;
+  }).then(function (uploaded) {
+    thread.usingLabel = uploaded.length
+      ? ('Using ' + uploaded.length + (uploaded.length === 1 ? ' file' : ' files') + ' in Agent')
+      : (names.length ? ('Using ' + names.length + (names.length === 1 ? ' file' : ' files')) : '');
+    saveThreads();
+    renderHeader();
+    return uploaded;
+  }).catch(function (err) {
+    pendingFiles = items.concat(pendingFiles);
+    renderChips();
+    throw err;
+  });
+}
+
 function consumeAttachments(thread) {
+  if (isAgentMode(thread)) return uploadAgentAttachments(thread);
   if (!pendingFiles.length) return Promise.resolve();
   var texts = pendingFiles.filter(function (f) { return f.kind === 'text' && f.text; });
   var names = pendingFiles.map(function (f) { return f.name; });
@@ -502,7 +594,18 @@ function renderHeader() {
     $race.value = OpenZooChatRace.raceDialValue(parsed.n, parsed.k);
     $race.className = parsed.n >= 2 ? 'dial hot' : 'dial';
   }
-  if ($model) $model.disabled = parsed.n >= 2;
+  if ($model) $model.disabled = parsed.n >= 2 || isAgentMode(t);
+  var agent = isAgentMode(t);
+  document.body.classList.toggle('agent-mode', agent);
+  var chatBtn = document.getElementById('modeChat');
+  var agentBtn = document.getElementById('modeAgent');
+  if (chatBtn) chatBtn.classList.toggle('on', !agent);
+  if (agentBtn) agentBtn.classList.toggle('on', agent);
+  var tip = document.getElementById('goalTip');
+  if (tip) tip.classList.toggle('hidden', !agent);
+  var stop = document.getElementById('actStop');
+  if (stop) stop.classList.toggle('hidden', !agent);
+  if ($inp) $inp.placeholder = agent ? 'Message Agent · /goal' : 'Message';
   renderHud();
 }
 
@@ -577,7 +680,9 @@ function renderLog() {
   $log.innerHTML = '';
   var t = activeThread();
   if (!t.messages.length) {
-    addBubble('assistant', 'Welcome to the zoo. Attach files or photos if you want this chat to use them — then just talk.');
+    addBubble('assistant', isAgentMode(t)
+      ? 'Agent talks to hosted OCC with your subscription key. Attach files into that session workspace — then send, including /goal.'
+      : 'Welcome to the zoo. Attach files or photos if you want this chat to use them — then just talk.');
   }
   t.messages.forEach(function (m) {
     if (m.role !== 'user' && m.role !== 'assistant') return;
@@ -1174,17 +1279,109 @@ function retryPending402() {
   });
 }
 
+function sendAgent(userText) {
+  var thread = activeThread();
+  if (!OpenZooOcc.canAgent(subscription.key)) {
+    addBubble('assistant', agentNoKeyMessage(), { err: true });
+    return Promise.resolve();
+  }
+  thread.messages.push({ role: 'user', content: userText });
+  if (thread.name === 'New chat') thread.name = userText.slice(0, 32);
+  if (/^\/goal\b/i.test(userText)) thread.goalSet = true;
+  thread.updatedAt = Date.now();
+  saveThreads();
+  renderSidebar();
+  renderHeader();
+  addBubble('user', userText, { images: thread.pendingImages || [] });
+  thread.pendingImages = null;
+  var thinking = addBubble('assistant', '…', { pending: true, status: 'Agent' });
+  var live = '';
+  var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  agentCtl = ctl;
+  return ensureOccSession(thread).then(function (sid) {
+    return OpenZooOcc.sendMessage(subscription.key, sid, userText, function (ev) {
+      if (ev && ev.sessionId && ev.sessionId !== thread.occSessionId) {
+        thread.occSessionId = ev.sessionId;
+        saveThreads();
+      }
+      if (ev && ev.type === 'status' && thinking.status) {
+        thinking.status.textContent = ev.status || 'Agent';
+      }
+      if (ev && ev.type === 'error') {
+        thinking.row.classList.add('err');
+        thinking.text.textContent = String(ev.error || 'Agent error');
+      }
+      if (ev && ev.text) {
+        if (ev.replace) live = String(ev.text);
+        else live += String(ev.text);
+        thinking.row.classList.remove('pending');
+        thinking.text.textContent = live || '…';
+        $log.scrollTop = $log.scrollHeight;
+      }
+    }, { signal: ctl && ctl.signal });
+  }).then(function (out) {
+    if (out && out.sessionId) {
+      thread.occSessionId = out.sessionId;
+    }
+    var text = String((out && out.reply) || live || '').trim() || 'Agent finished without text.';
+    thinking.row.classList.remove('pending');
+    thinking.text.textContent = text;
+    if (thinking.status) thinking.status.textContent = '';
+    thread.messages.push({ role: 'assistant', content: text });
+    thread.updatedAt = Date.now();
+    saveThreads();
+    renderSidebar();
+  }).catch(function (err) {
+    if (err && err.name === 'AbortError') {
+      thinking.row.classList.remove('pending');
+      var stopped = (live || '').trim() || 'Agent stopped.';
+      thinking.text.textContent = stopped;
+      thread.messages.push({ role: 'assistant', content: stopped });
+      saveThreads();
+      return;
+    }
+    thinking.row.classList.add('err');
+    thinking.text.textContent = userFacingPayError(err);
+  }).then(function () {
+    if (agentCtl === ctl) agentCtl = null;
+  });
+}
+
+function stopAgent() {
+  var thread = activeThread();
+  if (agentCtl) {
+    try { agentCtl.abort(); } catch (_) {}
+  }
+  if (thread && thread.occSessionId && OpenZooOcc.canAgent(subscription.key)) {
+    OpenZooOcc.stop(subscription.key, thread.occSessionId).catch(function () {});
+  }
+}
+
 function submit() {
   var text = $inp.value.trim();
   if ((!text && !pendingFiles.length) || busy) return;
+  var thread = activeThread();
+  if (/^\/mode\b/i.test(text)) {
+    var want = text.replace(/^\/mode\s*/i, '').trim();
+    $inp.value = '';
+    $inp.style.height = 'auto';
+    addBubble('user', text);
+    thread.messages.push({ role: 'user', content: text });
+    var next = setRunMode(want);
+    addBubble('assistant', next === 'agent'
+      ? 'Run mode set to agent — hosted OCC. Type /goal to keep it working.'
+      : 'Run mode set to chat — completions.');
+    saveThreads();
+    return;
+  }
   busy = true;
   document.getElementById('send').disabled = true;
-  var thread = activeThread();
   consumeAttachments(thread).then(function () {
     if (!text) text = thread.usingLabel ? 'Use what I just attached.' : '';
     if (!text) return;
     $inp.value = '';
     $inp.style.height = 'auto';
+    if (isAgentMode(thread)) return sendAgent(text);
     return sendChat(text);
   }).catch(function (err) {
     addBubble('assistant', userFacingPayError(err), { err: true });
@@ -1308,6 +1505,12 @@ document.addEventListener('click', function (ev) {
   if (panel.contains(ev.target) || btn.contains(ev.target)) return;
   panel.classList.remove('show');
 });
+var modeChatBtn = document.getElementById('modeChat');
+var modeAgentBtn = document.getElementById('modeAgent');
+if (modeChatBtn) modeChatBtn.onclick = function () { setRunMode('chat'); };
+if (modeAgentBtn) modeAgentBtn.onclick = function () { setRunMode('agent'); };
+var stopBtn = document.getElementById('actStop');
+if (stopBtn) stopBtn.onclick = stopAgent;
 document.getElementById('plan-btn').onclick = showPlan;
 document.getElementById('wallet-close').onclick = function () {
   document.getElementById('walletOverlay').classList.remove('show');
@@ -1339,6 +1542,9 @@ window.addEventListener('message', function (event) {
     subscription.productId = data.productId || null;
     subscription.pending = !!data.pending;
     subscription.localUnlock = !!data.localUnlock;
+    if (isAgentMode(activeThread()) && !OpenZooOcc.canAgent(subscription.key)) {
+      setRunMode('chat', { silent: true });
+    }
     if (data.address) {
       wallet.address = data.address;
       wallet.method = data.method;

@@ -72,6 +72,21 @@ body {
 #hud .hlime { color: #b8f240; }
 #hud .hember { color: #f28c4d; }
 #hud .hfoot { border-top: 1px solid #333340; margin-top: 10px; padding-top: 8px; color: #999aa8; font-size: 10px; }
+#modeToggle {
+  display: flex; align-items: center; gap: 0;
+  background: #1c1c1e; border: 1px solid #333340; border-radius: 999px; padding: 2px;
+}
+.modebtn {
+  border: 0; background: none; color: #8e8e93; font: inherit; font-size: 11px;
+  font-weight: 600; padding: 4px 11px; border-radius: 999px; cursor: pointer;
+  white-space: nowrap;
+}
+.modebtn.on { color: #000; }
+.modebtn.chat.on { background: #b8f240; }
+.modebtn.agent.on { background: #f28c4d; }
+#goalTip {
+  font-size: 11px; color: #8e8e93; padding: 0 8px 6px;
+}
 .dial {
   border: 1px solid #2c2c2e; background: #131315; color: #8e8e93;
   font: inherit; font-size: 11px; border-radius: 999px; padding: 4px 8px;
