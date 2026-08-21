@@ -149,6 +149,10 @@ return ide.openSession('oz_key', mockFetch([
 }, (err) => {
   assert.strictEqual(err.code, ide.OPEN_URL);
 })).then(() => {
+  assert.ok(/toolbar=no/.test(ide.IAB_FEATURES));
+  assert.ok(/location=no/.test(ide.IAB_FEATURES));
+  assert.ok(!/toolbar=yes/.test(ide.IAB_FEATURES));
+
   const loaded = ide.loadSession({
     url: 'https://zoo.openzoo.fun/ide/live',
     password: 'pw',
@@ -157,6 +161,30 @@ return ide.openSession('oz_key', mockFetch([
   assert.strictEqual(loaded.target, 'iframe');
   assert.strictEqual(loaded.frame.src, 'https://zoo.openzoo.fun/ide/live');
   assert.strictEqual(loaded.password, 'pw');
+
+  let iabOpened = false;
+  global.cordova = {
+    InAppBrowser: {
+      open: function () {
+        iabOpened = true;
+        return { close: function () {} };
+      }
+    }
+  };
+  const preferFrame = ide.loadSession({
+    url: 'https://zoo.openzoo.fun/ide/live',
+    id: 's1'
+  }, { frame: { src: '' } });
+  assert.strictEqual(preferFrame.target, 'iframe');
+  assert.strictEqual(iabOpened, false);
+
+  const iab = ide.loadSession({
+    url: 'https://zoo.openzoo.fun/ide/live',
+    id: 's1'
+  }, {});
+  assert.strictEqual(iab.target, 'inappbrowser');
+  assert.strictEqual(iabOpened, true);
+  delete global.cordova;
 
   const app = fs.readFileSync(path.join(__dirname, '../www/app/app.js'), 'utf8');
   assert.ok(app.indexOf('OpenZooIde') !== -1);
@@ -175,6 +203,13 @@ return ide.openSession('oz_key', mockFetch([
   assert.ok(html.indexOf('id="modeAgent"') !== -1);
   assert.ok(html.indexOf('https://zoo.openzoo.fun') !== -1);
   assert.ok(/frame-src[^"]*https:\/\/zoo\.openzoo\.fun/.test(html));
+  assert.ok(html.indexOf('viewport-fit=cover') !== -1);
+
+  const css = fs.readFileSync(path.join(__dirname, '../www/app/app.css'), 'utf8');
+  assert.ok(/#agentFrame\s*\{[^}]*width:\s*100%/.test(css));
+  assert.ok(/#agentFrame\s*\{[^}]*height:\s*100%/.test(css));
+  assert.ok(/body\.agent-mode #bar/.test(css));
+  assert.ok(!/toolbar=yes/.test(fs.readFileSync(path.join(__dirname, '../www/js/ide.js'), 'utf8')));
 
   const shell = fs.readFileSync(path.join(__dirname, '../www/index.html'), 'utf8');
   assert.ok(shell.indexOf('https://zoo.openzoo.fun') !== -1);
@@ -192,7 +227,7 @@ return ide.openSession('oz_key', mockFetch([
   console.log('ide: ok');
   console.log('  Bearer required; no key → no Agent');
   console.log('  zoo.openzoo.fun/ide/session GET + POST');
-  console.log('  load url in iframe / InAppBrowser; refuse open URLs');
+  console.log('  load url full-bleed in iframe; IAB fallback has no toolbar');
 }).catch((err) => {
   console.error(err);
   process.exit(1);

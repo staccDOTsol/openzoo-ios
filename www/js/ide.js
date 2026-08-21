@@ -18,6 +18,8 @@
   var REFUSED = 'IDE_REFUSED';
   var OPEN_URL = 'IDE_OPEN_URL';
   var NOT_LIVE = 'cloud Agent not live yet';
+  /* Full-bleed iOS: no location bar, no toolbar, no nav chrome. */
+  var IAB_FEATURES = 'location=no,toolbar=no,hidenavigationbuttons=yes,hideurlbar=yes,fullscreen=yes,presentationstyle=fullscreen,enableviewportscale=yes,disallowoverscroll=yes';
 
   function trimKey(key) {
     return String(key || '').trim();
@@ -232,15 +234,15 @@
   function loadSession(session, opts) {
     opts = opts || {};
     var url = assertSessionUrl(session && session.url);
-    var browser = inAppBrowser();
-    if (browser) {
-      var ref = browser.open(url, '_blank', opts.features || 'location=no,toolbar=yes,toolbarposition=top,closebuttoncaption=Chat');
-      return { url: url, password: session.password || '', id: session.id || '', target: 'inappbrowser', ref: ref };
-    }
     var frame = opts.frame || (typeof document !== 'undefined' && document.getElementById('agentFrame'));
     if (frame) {
       frame.src = url;
       return { url: url, password: session.password || '', id: session.id || '', target: 'iframe', frame: frame };
+    }
+    var browser = inAppBrowser();
+    if (browser) {
+      var ref = browser.open(url, '_blank', opts.features || IAB_FEATURES);
+      return { url: url, password: session.password || '', id: session.id || '', target: 'inappbrowser', ref: ref };
     }
     var noView = new Error(NOT_LIVE);
     noView.code = MISSING;
@@ -255,6 +257,7 @@
     REFUSED: REFUSED,
     OPEN_URL: OPEN_URL,
     NOT_LIVE: NOT_LIVE,
+    IAB_FEATURES: IAB_FEATURES,
     canAgent: canAgent,
     requireKey: requireKey,
     authHeaders: authHeaders,

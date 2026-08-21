@@ -562,7 +562,9 @@ function renderHeader() {
   var tip = document.getElementById('goalTip');
   if (tip) tip.classList.add('hidden');
   var stop = document.getElementById('actStop');
-  if (stop) stop.classList.toggle('hidden', !agent);
+  if (stop) stop.classList.add('hidden');
+  var bar = document.getElementById('bar');
+  if (bar) bar.classList.toggle('hidden', agent);
   if ($inp) $inp.placeholder = 'Message';
   renderHud();
 }
@@ -1306,14 +1308,9 @@ function openCloudAgent(opts) {
       thread.ideUrl = session.url;
       saveThreads();
     }
+    showAgentStatus('');
     if (session.password) {
-      showAgentStatus('Cloud Agent password: ' + session.password + ' · tap to copy');
-      var status = document.getElementById('agentStatus');
-      if (status) {
-        status.onclick = function () { copyValue(session.password); };
-      }
-    } else {
-      showAgentStatus('');
+      copyValue(session.password).catch(function () {});
     }
   }).catch(function (err) {
     hideCloudAgent();
@@ -1381,7 +1378,7 @@ function submit() {
     if (!text) return;
     $inp.value = '';
     $inp.style.height = 'auto';
-    if (isAgentMode(thread)) return sendAgent(text);
+    if (isAgentMode(thread)) return;
     return sendChat(text);
   }).catch(function (err) {
     addBubble('assistant', userFacingPayError(err), { err: true });

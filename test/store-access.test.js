@@ -92,12 +92,14 @@ assert.ok(chatHtml.indexOf('js/chat-race.js') !== -1);
 assert.ok(chatHtml.indexOf('js/occ.js') !== -1);
 assert.ok(chatHtml.indexOf('js/ide.js') !== -1);
 assert.ok(chatHtml.indexOf('id="agentFrame"') !== -1);
+assert.ok(chatHtml.indexOf('viewport-fit=cover') !== -1);
 assert.ok(chatHtml.indexOf('id="raceSel"') !== -1);
 assert.ok(chatHtml.indexOf('id="modeToggle"') !== -1);
 assert.ok(chatHtml.indexOf('id="modeAgent"') !== -1);
 assert.ok(chatHtml.indexOf('value="2 4"') !== -1);
 
 const shell = fs.readFileSync(path.join(__dirname, '../www/index.html'), 'utf8');
+assert.ok(shell.indexOf('viewport-fit=cover') !== -1);
 assert.ok(shell.indexOf('id="dev-unlock"') !== -1);
 assert.ok(shell.indexOf('id="dev-email"') !== -1);
 assert.ok(shell.indexOf('OpenZooIOSStore.testFlight()') !== -1);

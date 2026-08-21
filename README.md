@@ -26,7 +26,7 @@ This tree started from [FreeSolDev/CordovaSeeker](https://github.com/FreeSolDev/
   - Routes:
     - `POST /ide/session` `{}` → `{ url, password?, id }`
     - `GET /ide/session` → same if a session is already running
-  - Load `url` in the existing Agent webview/iframe (InAppBrowser if present, otherwise `#agentFrame`).
+  - Load `url` full-bleed in `#agentFrame` (`viewport-fit=cover`, frame is 100% of the Agent pane). Chat composer stays hidden — no second composer over Cline. InAppBrowser is fallback only, with no toolbar / location bar.
   - `401` / `403` → Plan (subscribe / restore). HTML `404` → “cloud Agent not live yet”; Chat still works.
   - Hosted OCC `/occ/sessions` stays in `www/js/occ.js` unused. Do not invent `/api/occ`.
 
